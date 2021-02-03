@@ -20,3 +20,4 @@ df = ec.echem_file_loader(filepath)
 fig, ax = ec.charge_discharge_plot(df, 1)
 
 ```
+[Charge/discharge plot](Example_figures/Graphite_charge_discharge_plot.png?raw=true)
