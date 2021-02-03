@@ -38,3 +38,15 @@ plt.xlabel('Voltage / V')
 plt.ylabel('dQ/dV / mAhV$^{-1}$')
 ```
 <img src="Example_figures/Graphite_dqdv.png" width="50%" height="50%">
+
+```
+fig, ax = ec.multi_dqdv_plot(df, cycles=cycles,
+                    colormap='plasma',
+                    window_size_1=51,
+                    polyorder_1=5,
+                    s_spline=1e-7,
+                    window_size_2=251,
+                    polyorder_2=5,
+                    final_smooth=True)
+```
+<img src="Example_figures/Si_dQdV.png" width="50%" height="50%">
