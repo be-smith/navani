@@ -5,7 +5,6 @@ import numpy as np
 from scipy.signal import savgol_filter
 from scipy.interpolate import splev, splrep
 import sqlite3
-from bokeh.plotting import figure
 import os
 import matplotlib.pyplot as plt
 
@@ -63,7 +62,7 @@ def echem_file_loader(filepath):
                 if "Record" in sheet_name:
                     if len(xlsx.parse(sheet_name, header=None)) != 0:
                         df_list.append(xlsx.parse(sheet_name, header=None))
-            for sheet in data_sheets:
+            for sheet in df_list:
                 sheet.columns = col_names
             df = pd.concat(df_list)
             df.set_index('Index', inplace=True)
@@ -77,7 +76,7 @@ def echem_file_loader(filepath):
                 df = pd.concat(df_list)
                 df = arbin_excel(df)
             else:
-                raise SheetNameError('Names of sheets not recognised')
+                raise ValueError('Names of sheets not recognised')
     else:
         print(extension)
         print('We got to here')
