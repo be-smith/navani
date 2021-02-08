@@ -1,3 +1,9 @@
+import os.path
+
+with open(os.path.join(os.path.dirname(__file__), 'README.md')) as f:
+    readme = f.read()
+
+
 from setuptools import setup
 
 setup(
@@ -16,5 +22,6 @@ setup(
     license='MIT',
     description='Package for processing and plotting echem data from cyclers',
     # We will also need a readme eventually (there will be a warning)
-    # long_description=open('README.txt').read(),
+    long_description=readme,
+    long_description_content_type='text/markdown'
 )
