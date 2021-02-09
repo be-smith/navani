@@ -17,8 +17,20 @@ res_col_dict = {'Voltage': 'Voltage',
 mpr_col_dict = {'Voltage': 'Ewe/V',
                 'Capacity': 'Capacity'}
 
+current_labels = set(['Current(A)', 'I /mA', 'Current/mA', 'Current'])
+
 
 def echem_file_loader(filepath):
+    """
+    Loads a variety of electrochemical filetypes and tries to construct the most useful measurements in a 
+    consistent way, with consistent columns labels. Outputs a dataframe with the original columns, and these constructed columns:
+    "state" - R for rest, 0 for discharge, 1 for charge (defined by the current direction)
+    "half cycle" - Counts the half cycles, rests are not included as a half cycle
+    "Capacity" - The capacity of the cell, each half cycle it resets to 0
+    "Voltage" - The voltage of the cell
+
+    From these measurements everything you want to know about the electrochemistry can be calculated.
+    """
     extension = os.path.splitext(filepath)[-1].lower()
     # Biologic file
     if extension == '.mpr':
@@ -26,7 +38,8 @@ def echem_file_loader(filepath):
         df = pd.DataFrame(data=gal_file.data)
         df = biologic_processing(df)
 
-    #arbin .res file - uses an sql server
+    # arbin .res file - uses an sql server and requires mdbtools installed
+    # sudo apt get mdbtools for windows and mac
     elif extension == '.res': 
         Output_file = 'placeholder_string'
         r2s.convert_arbin_to_sqlite(os.path.join(filepath), Output_file)
@@ -35,9 +48,7 @@ def echem_file_loader(filepath):
         cols = [column[0] for column in query.description]
         df = pd.DataFrame.from_records(data = query.fetchall(), columns = cols)
         dat.close()
-        df.set_index('Data_Point', inplace=True)
-        df.sort_index(inplace=True)
-        df['Capacity'] = df['Charge_Capacity'] + df['Discharge_Capacity']
+        df = arbin_res(df)
 
     elif extension == '.txt':
         df = pd.read_csv(os.path.join(filepath), sep='\t')
@@ -69,6 +80,8 @@ def echem_file_loader(filepath):
             df = old_land_processing(df)
         else:
             df_list = []
+            if 'Channel_Chart' in names:
+                names.remove('Channel_Chart')
             for count, name in enumerate(names):
                 if 'Channel' in name and 'Chart' not in name:
                     df_list.append(xlsx.parse(count))
@@ -79,11 +92,51 @@ def echem_file_loader(filepath):
                 raise ValueError('Names of sheets not recognised')
     else:
         print(extension)
-        print('We got to here')
+    
+    # Adding a full cycle column
+    df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
     return df
+
+def arbin_res(df):
+    df.set_index('Data_Point', inplace=True)
+    df.sort_index(inplace=True)
+    df['Capacity'] = df['Charge_Capacity'] + df['Discharge_Capacity']
+
+    def arbin_state(x):
+        if x > 0:
+            return 0
+        elif x < 0:
+            return 1
+        elif x == 0:
+            return 'R'
+        else:
+            print(x)
+            raise ValueError('Unexpected value in current - not a number')
+
+    df['state'] = df['Current'].map(lambda x: arbin_state(x))
+    return df
+
 
 def biologic_processing(df):
     # Dealing with the different column layouts for biologic files
+    
+    # Adding current column that galvani can't export for some reason
+    if ('time/s' in df.columns) and ('dQ/mA.h' in df.columns):
+        df['dt'] = np.diff(df['time/s'], prepend=0)
+        df['Current'] = df['dQ/mA.h']/(df['dt']/3600)
+    def bio_state(x):
+        if x > 0:
+            return 0
+        elif x < 0:
+            return 1
+        elif x == 0:
+            return 'R'
+        else:
+            print(x)
+            raise ValueError('Unexpected value in current - not a number')
+
+    df['state'] = df['Current'].map(lambda x: bio_state(x))
+
     # Renames Ewe/V to Voltage and the capacity column to Capacity
     if 'half cycle' in df.columns:
         if df['half cycle'].min() == 0:
@@ -105,6 +158,7 @@ def biologic_processing(df):
 
     else:
         print('Unknown column layout')
+        return None
 
 def ivium_processing(df):
     df['dq'] = np.diff(df['time /s'], prepend=0)*df['I /mA']
@@ -228,6 +282,36 @@ def dqdv_single_cycle(capacity, voltage,
         return x_volt, smooth_dqdv, smooth_cap
     else:
         return x_volt, dqdv, smooth_cap
+
+"""
+Processing values by cycle number
+"""
+def cycle_summary(df, current_label=None):
+    df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
+    
+    # Figuring out which column is current
+    if current_label is not None:
+        summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
+    else:
+        intersection = current_labels & set(df.columns)
+        if len(intersection) > 0:
+            current_label = next(iter(current_labels & set(df.columns)))
+            summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
+        else:
+            raise KeyError('Could not find current column label. Please supply label to function: current_label=label')
+
+    summary_df['UCV'] = df.groupby('full cycle')['Voltage'].max()
+    summary_df['LCV'] = df.groupby('full cycle')['Voltage'].min()
+
+    dis_mask = df['state'] == 0
+    dis_index = df[dis_mask]['full cycle'].unique()
+    summary_df.loc[dis_index, 'Discharge Capacity'] = df[dis_mask].groupby('full cycle')['Capacity'].max()
+
+    cha_mask = df['state'] == 1
+    cha_index = df[cha_mask]['full cycle'].unique()
+    summary_df.loc[cha_index, 'Charge Capacity'] = df[cha_mask].groupby('full cycle')['Capacity'].max()
+    summary_df['CE'] = summary_df['Charge Capacity']/summary_df['Discharge Capacity']
+    return summary_df
 
 """
 PLOTTING
