@@ -100,7 +100,6 @@ def echem_file_loader(filepath):
 def arbin_res(df):
     df.set_index('Data_Point', inplace=True)
     df.sort_index(inplace=True)
-    df['Capacity'] = df['Charge_Capacity'] + df['Discharge_Capacity']
 
     def arbin_state(x):
         if x > 0:
@@ -112,8 +111,26 @@ def arbin_res(df):
         else:
             print(x)
             raise ValueError('Unexpected value in current - not a number')
-
+    
     df['state'] = df['Current'].map(lambda x: arbin_state(x))
+    not_rest_idx = df[df['state'] != 'R'].index
+    df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
+    df['half cycle'] = (df['cycle change'] == True).cumsum()
+    if 'Discharge_Capacity' in df.columns:
+        df['Capacity'] = df['Discharge_Capacity'] + df['Charge_Capacity']
+    elif 'Discharge_Capacity(Ah)' in df.columns:
+        df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']
+    else:
+        raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
+    
+    for cycle in df['half cycle'].unique():
+        idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index
+        if len(idx) > 0:
+            initial_capacity = df.loc[idx[0], 'Capacity']
+            df.loc[idx, 'Capacity'] = df.loc[idx, 'Capacity'] - initial_capacity
+        else:
+            pass
+
     return df
 
 
@@ -250,9 +267,15 @@ def arbin_excel(df):
     df['half cycle'] = (df['cycle change'] == True).cumsum()
 
     df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']
+    
     for cycle in df['half cycle'].unique():
-        idx = df[df['half cycle'] == cycle].index
-        df.loc[idx, 'Capacity'] = df.loc[idx, 'Capacity'] - min(df.loc[idx, 'Capacity'])
+        idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index
+        if len(idx) > 0:
+            initial_capacity = df.loc[idx[0], 'Capacity']
+            df.loc[idx, 'Capacity'] = df.loc[idx, 'Capacity'] - initial_capacity
+        else:
+            pass
+
     df['Voltage'] = df['Voltage(V)']
     return df
 
@@ -287,6 +310,9 @@ def dqdv_single_cycle(capacity, voltage,
 Processing values by cycle number
 """
 def cycle_summary(df, current_label=None):
+    """
+    Computes summary statistics for each full cycle returning a new dataframe
+    """
     df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
     
     # Figuring out which column is current
@@ -298,7 +324,7 @@ def cycle_summary(df, current_label=None):
             current_label = next(iter(current_labels & set(df.columns)))
             summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
         else:
-            raise KeyError('Could not find current column label. Please supply label to function: current_label=label')
+            raise KeyError('Could not find Current column label. Please supply label to function: current_label=label')
 
     summary_df['UCV'] = df.groupby('full cycle')['Voltage'].max()
     summary_df['LCV'] = df.groupby('full cycle')['Voltage'].min()
