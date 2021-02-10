@@ -7,7 +7,7 @@ from scipy.interpolate import splev, splrep
 import sqlite3
 import os
 import matplotlib.pyplot as plt
-
+# Version 0.1.0
 # Different cyclers name their columns slightly differently 
 # These dictionaries are guides for the main things you want to plot
 
