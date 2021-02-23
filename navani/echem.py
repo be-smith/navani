@@ -327,6 +327,7 @@ def cycle_summary(df, current_label=None):
         intersection = current_labels & set(df.columns)
         if len(intersection) > 0:
             current_label = next(iter(current_labels & set(df.columns)))
+            df[current_label] = df[current_label].astype(float)
             summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
         else:
             raise KeyError('Could not find Current column label. Please supply label to function: current_label=label')
