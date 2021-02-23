@@ -321,7 +321,7 @@ def cycle_summary(df, current_label=None):
     
     # Figuring out which column is current
     if current_label is not None:
-    	df[current_label] = df[current_label].astype(float)
+        df[current_label] = df[current_label].astype(float)
         summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
     else:
         intersection = current_labels & set(df.columns)
