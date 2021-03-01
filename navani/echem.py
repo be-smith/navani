@@ -126,8 +126,9 @@ def arbin_res(df):
     for cycle in df['half cycle'].unique():
         idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index
         if len(idx) > 0:
+            cycle_idx = df[df['half cycle'] == cycle].index
             initial_capacity = df.loc[idx[0], 'Capacity']
-            df.loc[idx, 'Capacity'] = df.loc[idx, 'Capacity'] - initial_capacity
+            df.loc[cycle_idx, 'Capacity'] = df.loc[cycle_idx, 'Capacity'] - initial_capacity
         else:
             pass
 
@@ -275,8 +276,9 @@ def arbin_excel(df):
     for cycle in df['half cycle'].unique():
         idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index
         if len(idx) > 0:
+            cycle_idx = df[df['half cycle'] == cycle].index
             initial_capacity = df.loc[idx[0], 'Capacity']
-            df.loc[idx, 'Capacity'] = df.loc[idx, 'Capacity'] - initial_capacity
+            df.loc[cycle_idx, 'Capacity'] = df.loc[cycle_idx, 'Capacity'] - initial_capacity
         else:
             pass
 
