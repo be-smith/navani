@@ -337,11 +337,11 @@ def cycle_summary(df, current_label=None):
     summary_df['UCV'] = df.groupby('full cycle')['Voltage'].max()
     summary_df['LCV'] = df.groupby('full cycle')['Voltage'].min()
 
-    dis_mask = df['state'] == 0
+    dis_mask = df['state'] == 1
     dis_index = df[dis_mask]['full cycle'].unique()
     summary_df.loc[dis_index, 'Discharge Capacity'] = df[dis_mask].groupby('full cycle')['Capacity'].max()
 
-    cha_mask = df['state'] == 1
+    cha_mask = df['state'] == 0
     cha_index = df[cha_mask]['full cycle'].unique()
     summary_df.loc[cha_index, 'Charge Capacity'] = df[cha_mask].groupby('full cycle')['Capacity'].max()
     summary_df['CE'] = summary_df['Charge Capacity']/summary_df['Discharge Capacity']
