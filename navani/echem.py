@@ -143,21 +143,21 @@ def biologic_processing(df):
         df['dt'] = np.diff(df['time/s'], prepend=0)
         df['Current'] = df['dQ/mA.h']/(df['dt']/3600)
 
-    if np.isnan(df['Current'].iloc[0]):
-    	df.loc[df.index[0], 'Current'] = 0
+        if np.isnan(df['Current'].iloc[0]):
+        	df.loc[df.index[0], 'Current'] = 0
 
-    def bio_state(x):
-        if x > 0:
-            return 0
-        elif x < 0:
-            return 1
-        elif x == 0:
-            return 'R'
-        else:
-            print(x)
-            raise ValueError('Unexpected value in current - not a number')
+        def bio_state(x):
+            if x > 0:
+                return 0
+            elif x < 0:
+                return 1
+            elif x == 0:
+                return 'R'
+            else:
+                print(x)
+                raise ValueError('Unexpected value in current - not a number')
 
-    df['state'] = df['Current'].map(lambda x: bio_state(x))
+        df['state'] = df['Current'].map(lambda x: bio_state(x))
 
     # Renames Ewe/V to Voltage and the capacity column to Capacity
     if 'half cycle' in df.columns:
