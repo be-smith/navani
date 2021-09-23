@@ -59,12 +59,10 @@ def echem_file_loader(filepath):
             print('Columns did not match known .txt column layous')
     
     elif extension in ['.xlsx', '.xls']:
-
-        elif extension in ['.xlsx', '.xls']:
-    	      if extension == '.xlsx':
-    		        xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
-    	      else:
-    		        xlsx = pd.ExcelFile(os.path.join(filepath))
+        if extension == '.xlsx':
+            xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
+        else:
+            xlsx = pd.ExcelFile(os.path.join(filepath))
 
         names = xlsx.sheet_names
         # Edit this in a bit
