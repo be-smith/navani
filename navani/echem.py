@@ -163,6 +163,27 @@ def biologic_processing(df):
 
         df['state'] = df['Current'].map(lambda x: bio_state(x))
 
+    elif ('time/s' in df.columns) and ('Q charge/discharge/mA.h' in df.columns):
+        df['dQ/mA.h'] = np.diff(df['Q charge/discharge/mA.h'], prepend=0)
+        df['dt'] = np.diff(df['time/s'], prepend=0)
+        df['Current'] = df['dQ/mA.h']/(df['dt']/3600)
+
+        if np.isnan(df['Current'].iloc[0]):
+            df.loc[df.index[0], 'Current'] = 0
+
+        def bio_state(x):
+            if x > 0:
+                return 0
+            elif x < 0:
+                return 1
+            elif x == 0:
+                return 'R'
+            else:
+                print(x)
+                raise ValueError('Unexpected value in current - not a number')
+
+        df['state'] = df['Current'].map(lambda x: bio_state(x))
+
     # Renames Ewe/V to Voltage and the capacity column to Capacity
     if 'half cycle' in df.columns:
         if df['half cycle'].min() == 0:
@@ -336,7 +357,8 @@ def cycle_summary(df, current_label=None):
             df[current_label] = df[current_label].astype(float)
             summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
         else:
-            raise KeyError('Could not find Current column label. Please supply label to function: current_label=label')
+            print('Could not find Current column label. Please supply label to function: current_label=label')
+            summary_df = pd.DataFrame(index=df['full cycle'].unique())
 
     summary_df['UCV'] = df.groupby('full cycle')['Voltage'].max()
     summary_df['LCV'] = df.groupby('full cycle')['Voltage'].min()
