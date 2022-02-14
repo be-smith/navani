@@ -118,6 +118,7 @@ def arbin_res(df):
     
     df['state'] = df['Current'].map(lambda x: arbin_state(x))
     not_rest_idx = df[df['state'] != 'R'].index
+    df['cycle change'] = False
     df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
     df['half cycle'] = (df['cycle change'] == True).cumsum()
     if 'Discharge_Capacity' in df.columns:
@@ -184,10 +185,16 @@ def biologic_processing(df):
 
         df['state'] = df['Current'].map(lambda x: bio_state(x))
 
+    not_rest_idx = df[df['state'] != 'R'].index
+    df['cycle change'] = False
+    df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
+    df['half cycle'] = (df['cycle change'] == True).cumsum()
+
     # Renames Ewe/V to Voltage and the capacity column to Capacity
-    if 'half cycle' in df.columns:
-        if df['half cycle'].min() == 0:
-            df['half cycle'] = df['half cycle'] + 1
+    # if 'half cycle' in df.columns:
+    #     if df['half cycle'].min() == 0:
+    #         df['half cycle'] = df['half cycle'] + 1
+    
     if ('Q charge/discharge/mA.h' in df.columns) and ('half cycle') in df.columns:
         df['Capacity'] = abs(df['Q charge/discharge/mA.h'])
         df.rename(columns = {'Ewe/V':'Voltage'}, inplace = True)
@@ -379,6 +386,7 @@ def cycle_summary(df, current_label=None):
     for cycle in dis_cycles:
         mask = df['half cycle'] == cycle
         avg_vol = average_voltage(df['Capacity'][mask], df['Voltage'][mask])
+
         summary_df.loc[np.ceil(cycle/2), 'Average Discharge Voltage'] = avg_vol
         
     cha_cycles = df.loc[df.index[cha_mask]]['half cycle'].unique()
