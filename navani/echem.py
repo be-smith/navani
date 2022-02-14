@@ -371,6 +371,21 @@ def cycle_summary(df, current_label=None):
     cha_index = df[cha_mask]['full cycle'].unique()
     summary_df.loc[cha_index, 'Charge Capacity'] = df[cha_mask].groupby('full cycle')['Capacity'].max()
     summary_df['CE'] = summary_df['Charge Capacity']/summary_df['Discharge Capacity']
+
+    def average_voltage(capacity, voltage):
+        return np.trapz(voltage, capacity)/max(capacity)
+
+    dis_cycles = df.loc[df.index[dis_mask]]['half cycle'].unique()
+    for cycle in dis_cycles:
+        mask = df['half cycle'] == cycle
+        avg_vol = average_voltage(df['Capacity'][mask], df['Voltage'][mask])
+        summary_df.loc[np.ceil(cycle/2), 'Average Discharge Voltage'] = avg_vol
+        
+    cha_cycles = df.loc[df.index[cha_mask]]['half cycle'].unique()
+    for cycle in cha_cycles:
+        mask = df['half cycle'] == cycle
+        avg_vol = average_voltage(df['Capacity'][mask], df['Voltage'][mask])
+        summary_df.loc[np.ceil(cycle/2), 'Average Charge Voltage'] = avg_vol
     return summary_df
 
 """
