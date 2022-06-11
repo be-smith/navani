@@ -71,7 +71,7 @@ def test_mpr_reader():
         "../Example_data/jdb11-1_c3_gcpl_5cycles_2V-3p8V_C-24_data_C09.mpr"
     )
     df = ec.echem_file_loader(test_path)
-    assert df.shape == (46102, 16)
+    assert df.shape == (46102, 17)
 
     cols = (
         "state",
@@ -84,6 +84,7 @@ def test_mpr_reader():
         "Ns",
         "dt",
         "half cycle",
+        "cycle change",
         "P/W",
         "full cycle",
         "Current",
@@ -110,6 +111,6 @@ def test_mpr_reader():
     assert dqdv.shape == (10000,)
     assert capacity.shape == (10000,)
 
-    np.testing.assert_almost_equal(np.mean(voltage), 2.2544, decimal=3)
+    np.testing.assert_almost_equal(np.mean(voltage), 2.2525, decimal=3)
     np.testing.assert_almost_equal(np.mean(capacity), 0.1202, decimal=3)
-    np.testing.assert_almost_equal(np.mean(dqdv), -0.4057, decimal=3)
+    np.testing.assert_almost_equal(np.mean(dqdv), -0.4087, decimal=3)
