@@ -142,16 +142,8 @@ def arbin_res(df):
 
 def biologic_processing(df):
     # Dealing with the different column layouts for biologic files
-    
-    # Adding current column that galvani can't export for some reason
-    if ('time/s' in df.columns) and ('dQ/mA.h' in df.columns):
-        df['dt'] = np.diff(df['time/s'], prepend=0)
-        df['Current'] = df['dQ/mA.h']/(df['dt']/3600)
 
-        if np.isnan(df['Current'].iloc[0]):
-        	df.loc[df.index[0], 'Current'] = 0
-
-        def bio_state(x):
+    def bio_state(x):
             if x > 0:
                 return 0
             elif x < 0:
@@ -161,6 +153,14 @@ def biologic_processing(df):
             else:
                 print(x)
                 raise ValueError('Unexpected value in current - not a number')
+
+    # Adding current column that galvani can't export for some reason
+    if ('time/s' in df.columns) and ('dQ/mA.h' in df.columns):
+        df['dt'] = np.diff(df['time/s'], prepend=0)
+        df['Current'] = df['dQ/mA.h']/(df['dt']/3600)
+
+        if np.isnan(df['Current'].iloc[0]):
+        	df.loc[df.index[0], 'Current'] = 0
 
         df['state'] = df['Current'].map(lambda x: bio_state(x))
 
@@ -171,17 +171,6 @@ def biologic_processing(df):
 
         if np.isnan(df['Current'].iloc[0]):
             df.loc[df.index[0], 'Current'] = 0
-
-        def bio_state(x):
-            if x > 0:
-                return 0
-            elif x < 0:
-                return 1
-            elif x == 0:
-                return 'R'
-            else:
-                print(x)
-                raise ValueError('Unexpected value in current - not a number')
 
         df['state'] = df['Current'].map(lambda x: bio_state(x))
 
