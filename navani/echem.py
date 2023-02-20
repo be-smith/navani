@@ -185,6 +185,10 @@ def biologic_processing(df):
 
         df['state'] = df['Current'].map(lambda x: bio_state(x))
 
+    elif('I/mA' in df.columns):
+        df['Current'] = df['I/mA']
+        df['state'] = df['Current'].map(lambda x: bio_state(x))
+
     not_rest_idx = df[df['state'] != 'R'].index
     df['cycle change'] = False
     df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
