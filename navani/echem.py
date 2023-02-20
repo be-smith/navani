@@ -144,15 +144,15 @@ def biologic_processing(df):
     # Dealing with the different column layouts for biologic files
 
     def bio_state(x):
-            if x > 0:
-                return 0
-            elif x < 0:
-                return 1
-            elif x == 0:
-                return 'R'
-            else:
-                print(x)
-                raise ValueError('Unexpected value in current - not a number')
+        if x > 0:
+            return 0
+        elif x < 0:
+            return 1
+        elif x == 0:
+            return 'R'
+        else:
+            print(x)
+            raise ValueError('Unexpected value in current - not a number')
 
     # Adding current column that galvani can't export for some reason
     if ('time/s' in df.columns) and ('dQ/mA.h' in df.columns):
@@ -174,9 +174,10 @@ def biologic_processing(df):
 
         df['state'] = df['Current'].map(lambda x: bio_state(x))
 
-    elif('I/mA' in df.columns):
+    elif('I/mA' in df.columns) and ('Q charge/discharge/mA.h' not in df.columns) and ('dQ/mA.h' not in df.columns) and ('Ewe/V' in df.columns):
         df['Current'] = df['I/mA']
-        df['state'] = df['Current'].map(lambda x: bio_state(x))
+        df['dV'] = np.diff(df['Ewe/V'], prepend=df['Ewe/V'][0])
+        df['state'] = df['dV'].map(lambda x: bio_state(x))
 
     not_rest_idx = df[df['state'] != 'R'].index
     df['cycle change'] = False
@@ -202,7 +203,13 @@ def biologic_processing(df):
         df.rename(columns = {'Half cycle cap':'Capacity'}, inplace = True)
         df.rename(columns = {'Ewe/V':'Voltage'}, inplace = True)
         return df
-
+    elif ('(Q-Qo)/C' in df.columns) and ('half cycle') in df.columns:
+        for cycle in df['half cycle'].unique():
+            mask = df['half cycle'] == cycle
+            cycle_idx = df.index[mask]
+            df.loc[cycle_idx, 'Capacity'] = df.loc[cycle_idx, '(Q-Qo)/C'] - df.loc[cycle_idx[0], '(Q-Qo)/C']
+        df.rename(columns = {'Ewe/V':'Voltage'}, inplace = True)
+        return df
     else:
         print('Unknown column layout')
         return None
