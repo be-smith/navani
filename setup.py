@@ -15,7 +15,8 @@ setup(
     # Needed to actually package something
     packages=['navani'],
     # Needed for dependencies
-    install_requires=['numpy', 'pandas', 'scipy', 'galvani', 'matplotlib'],
+    install_requires=['numpy', 'pandas', 'scipy', 'galvani', 'matplotlib', 'openpyxl'],
+    tests_require=['pytest'],
     # *strongly* suggested for sharing
     version='0.1.1',
     # The license can be anything you like
