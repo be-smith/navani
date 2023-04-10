@@ -17,7 +17,7 @@ res_col_dict = {'Voltage': 'Voltage',
 mpr_col_dict = {'Voltage': 'Ewe/V',
                 'Capacity': 'Capacity'}
 
-current_labels = set(['Current(A)', 'I /mA', 'Current/mA', 'Current'])
+current_labels = ['Current', 'Current(A)', 'I /mA', 'Current/mA']
 
 
 def echem_file_loader(filepath):
@@ -315,6 +315,7 @@ def arbin_excel(df):
             pass
 
     df['Voltage'] = df['Voltage(V)']
+    df['Current'] = df['Current(A)']
     return df
 
 def dqdv_single_cycle(capacity, voltage, 
@@ -358,9 +359,13 @@ def cycle_summary(df, current_label=None):
         df[current_label] = df[current_label].astype(float)
         summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
     else:
-        intersection = current_labels & set(df.columns)
+        intersection = set(current_labels) & set(df.columns)
         if len(intersection) > 0:
-            current_label = next(iter(current_labels & set(df.columns)))
+            # Choose the first available label from current labels
+            for label in current_labels:
+                if label in intersection:
+                    current_label = label
+                    break
             df[current_label] = df[current_label].astype(float)
             summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
         else:
