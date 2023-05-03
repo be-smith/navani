@@ -12,13 +12,14 @@ def test_xlsx_reader_and_dqdv():
         "../Example_data/bs542_004_gr_li_50ua_50mv_1v_191020_Channel_11.xlsx"
     )
     df = ec.echem_file_loader(test_path)
-    assert df.shape == (4526, 21)
+    assert df.shape == (4526, 22)
 
     cols = (
         "index",
         "Date_Time",
         "Test_Time(s)",
         "Step_Time(s)",
+        "Time",
         "Step_Index",
         "Cycle_Index",
         "Voltage(V)",
@@ -91,7 +92,7 @@ def test_mpr_reader():
         "../Example_data/jdb11-1_c3_gcpl_5cycles_2V-3p8V_C-24_data_C09.mpr"
     )
     df = ec.echem_file_loader(test_path)
-    assert df.shape == (46102, 17)
+    assert df.shape == (46102, 18)
 
     cols = (
         "state",
@@ -101,6 +102,7 @@ def test_mpr_reader():
         "Q charge/discharge/mA.h",
         "(Q-Qo)/mA.h",
         "time/s",
+        "Time",
         "Ns",
         "dt",
         "half cycle",

@@ -57,7 +57,7 @@ def echem_file_loader(filepath):
             df = ivium_processing(df)
         else:
             print('Columns did not match known .txt column layous')
-    
+
     elif extension in ['.xlsx', '.xls']:
         if extension == '.xlsx':
             xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
@@ -96,7 +96,7 @@ def echem_file_loader(filepath):
                 raise ValueError('Names of sheets not recognised')
     else:
         print(extension)
-    
+
     # Adding a full cycle column
     df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
     return df
@@ -115,7 +115,7 @@ def arbin_res(df):
         else:
             print(x)
             raise ValueError('Unexpected value in current - not a number')
-    
+
     df['state'] = df['Current'].map(lambda x: arbin_state(x))
     not_rest_idx = df[df['state'] != 'R'].index
     df['cycle change'] = False
@@ -127,7 +127,7 @@ def arbin_res(df):
         df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']
     else:
         raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
-    
+
     for cycle in df['half cycle'].unique():
         idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index
         if len(idx) > 0:
@@ -153,6 +153,9 @@ def biologic_processing(df):
         else:
             print(x)
             raise ValueError('Unexpected value in current - not a number')
+
+    if "time/s" in df.columns:
+        df["Time"] = df["time/s"]
 
     # Adding current column that galvani can't export for some reason
     if ('time/s' in df.columns) and ('dQ/mA.h' in df.columns):
@@ -188,7 +191,7 @@ def biologic_processing(df):
     # if 'half cycle' in df.columns:
     #     if df['half cycle'].min() == 0:
     #         df['half cycle'] = df['half cycle'] + 1
-    
+
     if ('Q charge/discharge/mA.h' in df.columns) and ('half cycle') in df.columns:
         df['Capacity'] = abs(df['Q charge/discharge/mA.h'])
         df.rename(columns = {'Ewe/V':'Voltage'}, inplace = True)
@@ -230,6 +233,7 @@ def ivium_processing(df):
         idx = df.index[mask]
         df.loc[idx, 'Capacity'] = abs(df.loc[idx, 'dq']).cumsum()/3600
     df['Voltage'] = df['E /V']
+    df['Time'] = df['time /s']
     return df
 
 def new_land_processing(df):
@@ -258,6 +262,7 @@ def new_land_processing(df):
     df['half cycle'] = (df['cycle change'] == True).cumsum()
     df['Voltage'] = df['Voltage/V']
     df['Capacity'] = df['Capacity/mAh']
+    df['Time'] = df['time /s']
     return df
 
 def old_land_processing(df):
@@ -304,7 +309,7 @@ def arbin_excel(df):
     df['half cycle'] = (df['cycle change'] == True).cumsum()
 
     df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']
-    
+
     for cycle in df['half cycle'].unique():
         idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index
         if len(idx) > 0:
@@ -316,6 +321,9 @@ def arbin_excel(df):
 
     df['Voltage'] = df['Voltage(V)']
     df['Current'] = df['Current(A)']
+    if "Test_Time(s)" in df.columns:
+        df["Time"] = df["Test_Time(s)"]
+
     return df
 
 def dqdv_single_cycle(capacity, voltage, 
@@ -323,7 +331,7 @@ def dqdv_single_cycle(capacity, voltage,
                     polyorder_1 = 5, window_size_1=101,
                     polyorder_2 = 5, window_size_2=1001,
                     final_smooth=True):
-    
+
     import pandas as pd
     import numpy as np
     from scipy.interpolate import splrep, splev
@@ -353,7 +361,7 @@ def cycle_summary(df, current_label=None):
     Computes summary statistics for each full cycle returning a new dataframe
     """
     df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
-    
+
     # Figuring out which column is current
     if current_label is not None:
         df[current_label] = df[current_label].astype(float)
@@ -393,7 +401,7 @@ def cycle_summary(df, current_label=None):
         avg_vol = average_voltage(df['Capacity'][mask], df['Voltage'][mask])
 
         summary_df.loc[np.ceil(cycle/2), 'Average Discharge Voltage'] = avg_vol
-        
+
     cha_cycles = df.loc[df.index[cha_mask]]['half cycle'].unique()
     for cycle in cha_cycles:
         mask = df['half cycle'] == cycle
@@ -425,7 +433,7 @@ def charge_discharge_plot(df, full_cycle, colormap=None):
         ax.set_xlabel('Capacity / mAh')
         ax.set_ylabel('Voltage / V')
         return fig, ax
-    
+
     if not colormap:
         if len(full_cycle) < 11:
             colormap = 'tab10'
@@ -433,7 +441,7 @@ def charge_discharge_plot(df, full_cycle, colormap=None):
             colormap = 'tab20'
         else:
             raise ValueError("Too many cycles for default colormaps. Use multi_cycle_plot instead")
-    
+
     cm = plt.get_cmap(colormap)
     for count, full_cycle_number in enumerate(full_cycle):
         cycles = [full_cycle_number*2 -1, full_cycle_number*2]
@@ -445,17 +453,17 @@ def charge_discharge_plot(df, full_cycle, colormap=None):
 
     from matplotlib.lines import Line2D
     custom_lines = [Line2D([0], [0], color=cm(count), lw=2) for count, i in enumerate(full_cycle)]
-    
+
     ax.legend(custom_lines, [f'Cycle {i}' for i in full_cycle])
     ax.set_xlabel('Capacity / mAh')
     ax.set_ylabel('Voltage / V')
     return fig, ax
-    
+
 
 def multi_cycle_plot(df, cycles, colormap='viridis'):
     """
     Function for plotting continuously coloured cycles (useful for large numbers)
-    
+
     Supply the cycles as half cycle numbers e.g 1, 2 are discharge and charge for 
     first cycle
     """
@@ -485,7 +493,7 @@ def multi_dqdv_plot(df, cycles, colormap='viridis',
     polyorder_1 = 5, window_size_1=101,
     polyorder_2 = 5, window_size_2=1001,
     final_smooth=True):
-    
+
     """
     Plotting multi dQ/dV cyles on the same plot with a colormap.
     """
@@ -507,7 +515,7 @@ def multi_dqdv_plot(df, cycles, colormap='viridis',
                                     window_size_2=window_size_2,
                                     polyorder_2=polyorder_2,
                                     final_smooth=final_smooth)
-        
+
         ax.plot(voltage, dqdv, color=cm(norm(np.ceil(cycle/2))))
 
     cbar = fig.colorbar(sm)
