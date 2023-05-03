@@ -3,7 +3,6 @@ from galvani import res2sqlite as r2s
 import pandas as pd
 import numpy as np
 from scipy.signal import savgol_filter
-from scipy.interpolate import splev, splrep
 import sqlite3
 import os
 import matplotlib.pyplot as plt
@@ -452,7 +451,7 @@ def charge_discharge_plot(df, full_cycle, colormap=None):
                 ax.plot(df['Capacity'][mask], df['Voltage'][mask], color=cm(count))
 
     from matplotlib.lines import Line2D
-    custom_lines = [Line2D([0], [0], color=cm(count), lw=2) for count, i in enumerate(full_cycle)]
+    custom_lines = [Line2D([0], [0], color=cm(count), lw=2) for count, _ in enumerate(full_cycle)]
 
     ax.legend(custom_lines, [f'Cycle {i}' for i in full_cycle])
     ax.set_xlabel('Capacity / mAh')
@@ -507,10 +506,11 @@ def multi_dqdv_plot(df, cycles, colormap='viridis',
 
     for cycle in cycles:
         df_cycle = df[df['half cycle'] == cycle]
-        voltage, dqdv, cap = dqdv_single_cycle(df_cycle[capacity_label], 
+        voltage, dqdv, _ = dqdv_single_cycle(df_cycle[capacity_label],
                                     df_cycle[voltage_label], 
                                     window_size_1=window_size_1,
                                     polyorder_1=polyorder_1,
+                                    polynomial_spline=polynomial_spline,
                                     s_spline=s_spline,
                                     window_size_2=window_size_2,
                                     polyorder_2=polyorder_2,
