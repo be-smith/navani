@@ -18,7 +18,7 @@ setup(
     install_requires=['numpy', 'pandas', 'scipy', 'galvani', 'matplotlib', 'openpyxl'],
     tests_require=['pytest'],
     # *strongly* suggested for sharing
-    version='0.1.1',
+    version='0.1.3',
     # The license can be anything you like
     license='MIT',
     description='Package for processing and plotting echem data from cyclers',
