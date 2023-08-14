@@ -157,3 +157,11 @@ def test_mpr_reader():
     np.testing.assert_almost_equal(summary_df["Average Discharge Voltage"].mean(), 2.7871832, decimal=5)
     np.testing.assert_almost_equal(summary_df["Average Charge Voltage"].mean(), 2.97389223, decimal=5)
 
+
+def test_arbin_res():
+    import navani.echem as ec
+
+    test_path = pathlib.Path(__file__).parent.joinpath(
+        "../Example_data/arbin_example.res"
+    )
+    df = ec.echem_file_loader(test_path)
