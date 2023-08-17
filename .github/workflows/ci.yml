@@ -25,9 +25,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install MBDTools OS dependency
+      - name: Install MDBTools OS dependency
         run: |
-          sudo apt install -y mbdtools
+          sudo apt install -y mdbtools
 
       - name: Install latest compatible versions of immediate dependencies
         run: |
