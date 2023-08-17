@@ -27,7 +27,7 @@ jobs:
 
       - name: Install MBDTools OS dependency
         run: |
-          apt install mbdtools
+          sudo apt -y install mbdtools
 
       - name: Install latest compatible versions of immediate dependencies
         run: |
