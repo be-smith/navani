@@ -9,7 +9,7 @@ jobs:
 
   pytest:
     name: Run Python unit tests
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
 
     strategy:
       fail-fast: true
@@ -27,7 +27,6 @@ jobs:
 
       - name: Install MBDTools OS dependency
         run: |
-          sudo apt update
           sudo apt install -y mbdtools
 
       - name: Install latest compatible versions of immediate dependencies
