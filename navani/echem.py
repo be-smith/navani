@@ -123,7 +123,7 @@ def arbin_res(df):
     if 'Discharge_Capacity' in df.columns:
         df['Capacity'] = df['Discharge_Capacity'] + df['Charge_Capacity']
     elif 'Discharge_Capacity(Ah)' in df.columns:
-        df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']
+        df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] / 1000
     else:
         raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
 
