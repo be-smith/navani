@@ -181,9 +181,11 @@ def biologic_processing(df):
         df['dV'] = np.diff(df['Ewe/V'], prepend=df['Ewe/V'][0])
         df['state'] = df['dV'].map(lambda x: bio_state(x))
 
-    not_rest_idx = df[df['state'] != 'R'].index
     df['cycle change'] = False
-    df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
+    if "state" in df.columns:
+        not_rest_idx = df[df['state'] != 'R'].index
+        df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
+
     df['half cycle'] = (df['cycle change'] == True).cumsum()
 
     # Renames Ewe/V to Voltage and the capacity column to Capacity
@@ -213,8 +215,9 @@ def biologic_processing(df):
         df.rename(columns = {'Ewe/V':'Voltage'}, inplace = True)
         return df
     else:
-        print('Unknown column layout')
-        return None
+        print('Warning: unhandled column layout. No capacity or charge columns found.')
+        df.rename(columns = {'Ewe/V':'Voltage'}, inplace = True)
+        return df
 
 def ivium_processing(df):
     df['dq'] = np.diff(df['time /s'], prepend=0)*df['I /mA']
