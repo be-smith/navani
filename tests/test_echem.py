@@ -165,3 +165,11 @@ def test_arbin_res():
         "../Example_data/arbin_example.res"
     )
     df = ec.echem_file_loader(test_path)
+
+def test_mpr_files_from_eclab_1150():
+    import navani.echem as ec
+
+    test_paths = pathlib.Path(__file__).parent.joinpath("../Example_data/").glob("00_test*.mpr")
+    for test_path in test_paths:
+        df = ec.echem_file_loader(test_path)
+        assert df.shape[0] > 0
