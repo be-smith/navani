@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "3004501374f0f50ba34cfbae6fba177d75f70ba9eabad884f0e533af72faaa06"
+            "sha256": "4d5da86dc398273dc814579d94bf8e2c7c2bc743e90d9a959645a4fe5df352ab"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -235,9 +235,9 @@
             "version": "==4.47.2"
         },
         "galvani": {
-            "git": "git+https://github.com/echemdata/galvani@master",
+            "git": "git+https://github.com/chatcannon/galvani@JhonFlash-master",
             "markers": "python_version >= '3.6'",
-            "ref": "aa0aee61287efa3074aa6107df6ff26a53e5afd7"
+            "ref": "4971f2b550ee964940b4c68e41a4c87cfcb05fc6"
         },
         "idna": {
             "hashes": [
