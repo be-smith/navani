@@ -166,10 +166,15 @@ def test_arbin_res():
     )
     df = ec.echem_file_loader(test_path)
 
-def test_mpr_files_from_eclab_1150():
+@pytest.mark.parametrize("test_path", [
+    "00_test_01_OCV_C01.mpr",
+    "00_test_02_MB_C01.mpr",
+    "00_test_02_OCV_C01.mpr",
+    "00_test_04_MB_C01.mpr",
+])
+def test_mpr_files_from_eclab_1150(test_path):
     import navani.echem as ec
 
-    test_paths = pathlib.Path(__file__).parent.joinpath("../Example_data/").glob("00_test*.mpr")
-    for test_path in test_paths:
-        df = ec.echem_file_loader(test_path)
-        assert df.shape[0] > 0
+    path = pathlib.Path(__file__).parent.parent / "Example_data" / test_path
+    df = ec.echem_file_loader(path)
+    assert df.shape[0] > 0
