@@ -157,8 +157,10 @@ def biologic_processing(df):
         df["Time"] = df["time/s"]
 
     # Adding current column that galvani can't export for some reason
-    if ('time/s' in df.columns) and ('dQ/mA.h' in df.columns):
+    if ('time/s' in df.columns) and ('dQ/mA.h' in df.columns or 'dq/mA.h' in df.columns):
         df['dt'] = np.diff(df['time/s'], prepend=0)
+        if 'dQ/mA.h' not in df.columns:
+            df.rename(columns = {'dq/mA.h': 'dQ/mA.h'}, inplace = True)
         df['Current'] = df['dQ/mA.h']/(df['dt']/3600)
 
         if np.isnan(df['Current'].iloc[0]):
