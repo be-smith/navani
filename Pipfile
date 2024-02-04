@@ -8,9 +8,9 @@ requests = "*"
 numpy = "*"
 pandas = "*"
 openpyxl = "*"
-galvani = "*"
+galvani = { git = "git+https://github.com/echemdata/galvani@master" }
 scipy = "*"
-bokeh = "*"
+matplotlib = "*"
 
 [dev-packages]
 pytest = "*"
