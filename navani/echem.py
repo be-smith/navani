@@ -1,15 +1,18 @@
 from galvani import MPRfile
 from galvani import res2sqlite as r2s
+from NewareNDA.NewareNDA import read
 import pandas as pd
 import numpy as np
+import warnings
 from scipy.signal import savgol_filter
 import sqlite3
 import os
 import matplotlib.pyplot as plt
-# Version 0.1.0
+from typing import Union
+from pathlib import Path
+
 # Different cyclers name their columns slightly differently 
 # These dictionaries are guides for the main things you want to plot
-
 res_col_dict = {'Voltage': 'Voltage',
                 'Capacity': 'Capacity'}
 
@@ -70,6 +73,8 @@ def echem_file_loader(filepath):
             df = new_land_processing(df)
         elif "Record" in names[0]:
             df_list = [xlsx.parse(0)]
+            if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
+                raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=}")
             col_names = df_list[0].columns
 
             for sheet_name in names[1:]:
@@ -77,6 +82,8 @@ def echem_file_loader(filepath):
                     if len(xlsx.parse(sheet_name, header=None)) != 0:
                         df_list.append(xlsx.parse(sheet_name, header=None))
             for sheet in df_list:
+                if not isinstance(sheet, pd.DataFrame):
+                    raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=}")
                 sheet.columns = col_names
             df = pd.concat(df_list)
             df.set_index('Index', inplace=True)
@@ -93,11 +100,16 @@ def echem_file_loader(filepath):
                 df = arbin_excel(df)
             else:
                 raise ValueError('Names of sheets not recognised')
+    elif extension in (".nda", ".ndax"):
+        df = neware_reader(filepath)
     else:
         print(extension)
+        raise RuntimeError("Filetype {extension=} not recognised.")
 
     # Adding a full cycle column
-    df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
+    if "half cycle" in df.columns:
+        df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
+
     return df
 
 def arbin_res(df):
@@ -329,6 +341,31 @@ def arbin_excel(df):
         df["Time"] = df["Test_Time(s)"]
 
     return df
+
+def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
+    """Reads a Neware NDA/NDAX file into a pandas DataFrame using NewareNDA."""
+    filename = str(filename)
+    # capture any warnings from NewareNDA and handle the ones about autoscaling
+    with warnings.catch_warnings(record=True) as w:
+        df = read(filename, error_on_missing=False)
+    for warning in w:
+        warnings.warn(f"{warning.message}", category=warning.category)
+
+    # remap to expected navani columns and units
+    df.set_index("Index", inplace=True)
+    df.index.rename("index", inplace=True)
+    df["Capacity"] = 1000 * df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"]
+    df["Current"] = 1000 * df["Current(mA)"]
+    df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
+    df["state"][df["Status"] == "Rest"] = "R"
+    df["state"][df["Status"] == "CC_Chg"] = 1
+    df["state"][df["Status"] == "CC_DChg"] = 0
+    df["half cycle"] = df["Cycle"]
+    df['cycle change'] = False
+    not_rest_idx = df[df['state'] != 'R'].index
+    df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
+    return df
+
 
 def dqdv_single_cycle(capacity, voltage, 
                     polynomial_spline=3, s_spline=1e-5,
