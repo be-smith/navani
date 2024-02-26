@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "fff3e734695f4e5340de78d284c6cdd1d5e361bbee02d4f767bd856de98f37c6"
+            "sha256": "7189fd2e312e904fdc4834f756b2b5d83c3063d7d04926deac1489e4297d3af0"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -235,9 +235,9 @@
             "version": "==4.49.0"
         },
         "galvani": {
-            "git": "git+https://github.com/echemdata/galvani@master",
+            "git": "git+https://github.com/echemdata/galvani@ml-evs/analog-in-fix",
             "markers": "python_version >= '3.6'",
-            "ref": "1fd9f8454a7054c28464fda6ebb1e4b3c65ad270"
+            "ref": "0c2ecd42ca10e0d95d37b98decc26447cd480019"
         },
         "idna": {
             "hashes": [

@@ -8,7 +8,7 @@ requests = "*"
 numpy = "*"
 pandas = "*"
 openpyxl = "*"
-galvani = { git = "git+https://github.com/echemdata/galvani@master" }
+galvani = { git = "git+https://github.com/echemdata/galvani@ml-evs/analog-in-fix" }
 NewareNDA = { git = "git+https://github.com/ml-evs/NewareNDA@ml-evs/development" }
 scipy = "*"
 matplotlib = "*"
