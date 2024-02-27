@@ -157,3 +157,76 @@ def test_mpr_reader():
     np.testing.assert_almost_equal(summary_df["Average Discharge Voltage"].mean(), 2.7871832, decimal=5)
     np.testing.assert_almost_equal(summary_df["Average Charge Voltage"].mean(), 2.97389223, decimal=5)
 
+
+def test_arbin_res():
+    import navani.echem as ec
+
+    test_path = pathlib.Path(__file__).parent.joinpath(
+        "../Example_data/arbin_example.res"
+    )
+    df = ec.echem_file_loader(test_path)
+
+    cols = (
+        "state",
+        "cycle change",
+        "half cycle",
+        "Capacity",
+        "Voltage",
+        "Current",
+        "full cycle",
+    )
+
+    assert all(c in df for c in cols)
+
+def test_nda():
+    import navani.echem as ec
+
+    test_path = pathlib.Path(__file__).parent.parent / "Example_data" / "test.nda"
+
+    with pytest.warns(RuntimeWarning, match="scaling") as record:
+        df = ec.echem_file_loader(test_path)
+
+    # Filter out any other warning messages
+    record = [r for r in record if r.category is RuntimeWarning and "scaling" in str(r.message)]
+    assert len(record) == 1
+    cols = (
+        "state",
+        "cycle change",
+        "half cycle",
+        "Capacity",
+        "Voltage",
+        "Current",
+        "full cycle",
+    )
+    assert all(c in df for c in cols), f"Some columns from {cols} were missing in {df.columns}: {set(cols) - set(df.columns)}"
+
+def test_ndax():
+    import navani.echem as ec 
+
+    test_path = pathlib.Path(__file__).parent.parent / "Example_data" / "test.ndax"
+
+    df = ec.echem_file_loader(test_path)
+    cols = (
+        "state",
+        "cycle change",
+        "half cycle",
+        "Capacity",
+        "Voltage",
+        "Current",
+        "full cycle",
+    )
+
+    assert all(c in df for c in cols), f"Some columns from {cols} were missing in {df.columns}"
+
+@pytest.mark.parametrize("test_path", [
+    "00_test_01_OCV_C01.mpr",
+    "00_test_02_MB_C01.mpr",
+    "00_test_02_OCV_C01.mpr",
+    "00_test_04_MB_C01.mpr",
+])
+def test_mpr_files_from_eclab_1150(test_path):
+    import navani.echem as ec
+
+    path = pathlib.Path(__file__).parent.parent / "Example_data" / test_path
+    df = ec.echem_file_loader(path)
+    assert df.shape[0] > 0

@@ -5,17 +5,22 @@ on:
     branches:
       - main
 
+env:
+  # Need to set this to avoid pipenv syncing an entire LFS repo and failing with bandwidth quota (see
+  # https://github.com/the-grey-group/datalab/issues/603)
+  GIT_LFS_SKIP_SMUDGE: 1
+
 jobs:
 
   pytest:
     name: Run Python unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     strategy:
-      fail-fast: true
-      max-parallel: 1
+      fail-fast: false
+      max-parallel: 4
       matrix:
-        python-version: [3.9]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
 
     steps:
       - uses: actions/checkout@v3
@@ -24,6 +29,10 @@ jobs:
         uses: actions/setup-python@v3
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Install MDBTools OS dependency
+        run: |
+          sudo apt install -y mdbtools
 
       - name: Install latest compatible versions of immediate dependencies
         run: |
