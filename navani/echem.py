@@ -1,6 +1,6 @@
 from galvani import MPRfile
 from galvani import res2sqlite as r2s
-from NewareNDA.NewareNDA import read
+
 import pandas as pd
 import numpy as np
 import warnings
@@ -344,12 +344,9 @@ def arbin_excel(df):
 
 def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
     """Reads a Neware NDA/NDAX file into a pandas DataFrame using NewareNDA."""
+    from NewareNDA.NewareNDA import read
     filename = str(filename)
-    # capture any warnings from NewareNDA and handle the ones about autoscaling
-    with warnings.catch_warnings(record=True) as w:
-        df = read(filename, error_on_missing=False)
-    for warning in w:
-        warnings.warn(f"{warning.message}", category=warning.category)
+    df = read(filename)
 
     # remap to expected navani columns and units
     df.set_index("Index", inplace=True)

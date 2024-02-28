@@ -15,7 +15,7 @@ setup(
     # Needed to actually package something
     packages=['navani'],
     # Needed for dependencies
-    install_requires=['numpy', 'pandas', 'scipy', 'git+https://github.com/echemdata/galvani@master#egg=galvani', 'matplotlib', 'openpyxl'],
+    install_requires=['numpy', 'pandas', 'scipy', 'git+https://github.com/echemdata/galvani@master#egg=galvani', 'matplotlib', 'openpyxl', 'NewareNDA'],
     tests_require=['pytest'],
     # *strongly* suggested for sharing
     version='0.1.3',
