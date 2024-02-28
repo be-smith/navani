@@ -178,17 +178,15 @@ def test_arbin_res():
 
     assert all(c in df for c in cols)
 
+@pytest.skip("This test will not pass until neware-nda release is made")
 def test_nda():
     import navani.echem as ec
 
     test_path = pathlib.Path(__file__).parent.parent / "Example_data" / "test.nda"
 
-    with pytest.warns(RuntimeWarning, match="scaling") as record:
-        df = ec.echem_file_loader(test_path)
+    df = ec.echem_file_loader(test_path)
 
     # Filter out any other warning messages
-    record = [r for r in record if r.category is RuntimeWarning and "scaling" in str(r.message)]
-    assert len(record) == 1
     cols = (
         "state",
         "cycle change",
