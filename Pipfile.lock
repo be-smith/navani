@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "7189fd2e312e904fdc4834f756b2b5d83c3063d7d04926deac1489e4297d3af0"
+            "sha256": "b5b8e9df791c05ba56c1ad4aed9c5055a522871b0163bda60ee2c8d42983b7f7"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -393,9 +393,12 @@
             "version": "==3.8.3"
         },
         "newarenda": {
-            "git": "git+https://github.com/ml-evs/NewareNDA@ml-evs/development",
+            "hashes": [
+                "sha256:801ac74cea925f5dffd89dc40a677bad9bec163033e0b3bdbf4b4a35d8383171",
+                "sha256:8b97e302d51e8ff9186cc81a5cfaca4a23d80d6e18c4fe0a1d8e9005d59d346b"
+            ],
             "markers": "python_version >= '3.6'",
-            "ref": "b3ca37d0a25f25c1fa813c6fc01eff98c69d6631"
+            "version": "==2024.2.1"
         },
         "numpy": {
             "hashes": [
