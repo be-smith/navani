@@ -178,7 +178,7 @@ def test_arbin_res():
 
     assert all(c in df for c in cols)
 
-@pytest.skip("This test will not pass until neware-nda release is made")
+@pytest.mark.skip("This test will not pass until neware-nda release is made")
 def test_nda():
     import navani.echem as ec
 
