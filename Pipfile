@@ -8,7 +8,7 @@ requests = "*"
 numpy = "*"
 pandas = "*"
 openpyxl = "*"
-galvani = { git = "git+https://github.com/echemdata/galvani@ml-evs/analog-in-fix" }
+galvani = ">= 0.4.1"
 NewareNDA = "*"
 scipy = "*"
 matplotlib = "*"
