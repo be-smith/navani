@@ -195,6 +195,11 @@ def biologic_processing(df):
         df['dV'] = np.diff(df['Ewe/V'], prepend=df['Ewe/V'][0])
         df['state'] = df['dV'].map(lambda x: bio_state(x))
 
+    elif('<I>/mA' in df.columns) and ('Q charge/discharge/mA.h' not in df.columns) and ('dQ/mA.h' not in df.columns) and ('Ewe/V' in df.columns):
+        df['Current'] = df['<I>/mA']
+        df['dV'] = np.diff(df['Ewe/V'], prepend=df['Ewe/V'][0])
+        df['state'] = df['dV'].map(lambda x: bio_state(x))
+
     df['cycle change'] = False
     if "state" in df.columns:
         not_rest_idx = df[df['state'] != 'R'].index
