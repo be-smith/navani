@@ -12,7 +12,7 @@ from typing import Union
 from pathlib import Path
 
 # Different cyclers name their columns slightly differently 
-# These dictionaries are guides for the main things you want to plot
+# These dictionaries are guides for the main things you want to plot and what they are called
 res_col_dict = {'Voltage': 'Voltage',
                 'Capacity': 'Capacity'}
 
@@ -22,16 +22,30 @@ mpr_col_dict = {'Voltage': 'Ewe/V',
 current_labels = ['Current', 'Current(A)', 'I /mA', 'Current/mA']
 
 
-def echem_file_loader(filepath):
+def echem_file_loader(filepath, mass=None, area=None):
     """
     Loads a variety of electrochemical filetypes and tries to construct the most useful measurements in a 
-    consistent way, with consistent columns labels. Outputs a dataframe with the original columns, and these constructed columns:
-    "state" - R for rest, 0 for discharge, 1 for charge (defined by the current direction)
-    "half cycle" - Counts the half cycles, rests are not included as a half cycle
-    "Capacity" - The capacity of the cell, each half cycle it resets to 0
-    "Voltage" - The voltage of the cell
-
-    From these measurements everything you want to know about the electrochemistry can be calculated.
+    consistent way, with consistent column labels. Outputs a dataframe with the original columns, and these constructed columns:
+    
+    - "state": R for rest, 0 for discharge, 1 for charge (defined by the current direction +ve or -ve)
+    - "half cycle": Counts the half cycles, rests are not included as a half cycle
+    - "full cycle": Counts the full cycles, rests are not included as a full cycle
+    - "cycle change": Boolean column that is True when the state changes
+    - "Capacity": The capacity of the cell, each half cycle it resets to 0 - In general this will be in mAh - however it depends what unit the original file is in - Arbin Ah automatically converted to mAh
+    - "Voltage": The voltage of the cell
+    - "Current": The current of the cell
+    - "Specific Capacity": The capacity of the cell divided by the mass of the cell if mass provided
+    - "Current Density": The current of the cell divided by the area of the cell is area provided
+    
+    From these measurements, everything you want to know about the electrochemistry can be calculated.
+    
+    Parameters:
+        filepath (str): The path to the electrochemical file.
+        mass (float, optional): The mass of the cell. Defaults to None.
+        area (float, optional): The area of the cell. Defaults to None.
+    
+    Returns:
+        pandas.DataFrame: A dataframe with the original columns and the constructed columns.
     """
     extension = os.path.splitext(filepath)[-1].lower()
     # Biologic file
@@ -102,6 +116,16 @@ def echem_file_loader(filepath):
                 raise ValueError('Names of sheets not recognised')
     elif extension in (".nda", ".ndax"):
         df = neware_reader(filepath)
+    # If the file is a csv previously processed by navani
+    # Check for the columns that are expected (Capacity, Voltage, Current, Cycle numbers, state)
+    elif extension == '.csv':
+        df = pd.read_csv(filepath, 
+                         index_col=0)
+        expected_columns = ['Capacity', 'Voltage', 'half cycle', 'full cycle', 'Current', 'state']
+        if all(col in df.columns for col in expected_columns):
+            pass
+        else:
+            raise ValueError('Columns do not match expected columns for navani processed csv')
     else:
         print(extension)
         raise RuntimeError("Filetype {extension=} not recognised.")
@@ -109,6 +133,16 @@ def echem_file_loader(filepath):
     # Adding a full cycle column
     if "half cycle" in df.columns:
         df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
+
+
+    if mass:
+        df['Specific Capacity'] = df['Capacity']/mass
+    if area:
+        df['Specific Capacity (Area)'] = df['Capacity']/area
+    if mass and 'Current' in df.columns:
+        df['Specific Current'] = df['Current']/mass
+    if area and 'Current' in df.columns:
+        df['Current Density'] = df['Current']/area
 
     return df
 
@@ -329,10 +363,10 @@ def arbin_excel(df):
     df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
     df['half cycle'] = (df['cycle change'] == True).cumsum()
 
-    df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']
+    df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] / 1000
 
     for cycle in df['half cycle'].unique():
-        idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index
+        idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index  
         if len(idx) > 0:
             cycle_idx = df[df['half cycle'] == cycle].index
             initial_capacity = df.loc[idx[0], 'Capacity']
@@ -353,7 +387,7 @@ def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
     filename = str(filename)
     df = read(filename)
 
-    # remap to expected navani columns and units
+    # remap to expected navani columns and units (mAh, V, mA) Our Neware machine reports mAh in column name but is in fact Ah...
     df.set_index("Index", inplace=True)
     df.index.rename("index", inplace=True)
     df["Capacity"] = 1000 * df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"]
