@@ -202,7 +202,7 @@ def arbin_res(df):
     if 'Discharge_Capacity' in df.columns:
         df['Capacity'] = df['Discharge_Capacity'] + df['Charge_Capacity']
     elif 'Discharge_Capacity(Ah)' in df.columns:
-        df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] / 1000
+        df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] * 1000
     else:
         raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
 
@@ -448,7 +448,7 @@ def arbin_excel(df):
     df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
     df['half cycle'] = (df['cycle change'] == True).cumsum()
 
-    df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] / 1000
+    df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] * 1000
 
     for cycle in df['half cycle'].unique():
         idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index  
