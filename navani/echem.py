@@ -483,7 +483,7 @@ def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
     # remap to expected navani columns and units (mAh, V, mA) Our Neware machine reports mAh in column name but is in fact Ah...
     df.set_index("Index", inplace=True)
     df.index.rename("index", inplace=True)
-    df["Capacity"] = 1000 * df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"]
+    df["Capacity"] = 1000 * (df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"])
     df["Current"] = 1000 * df["Current(mA)"]
     df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
     df["state"][df["Status"] == "Rest"] = "R"
