@@ -9,7 +9,7 @@ from setuptools import setup
 setup(
     # Needed to silence warnings (and to be a worthwhile package)
     name='navani',
-    url='https://github.com/BenSmithGreyGroup/navani',
+    url='https://github.com/be-smith/navani',
     author='Ben Smith',
     author_email='ben.ed.smith2@gmail.com',
     # Needed to actually package something
