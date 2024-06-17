@@ -580,6 +580,16 @@ def cycle_summary(df, current_label=None):
     summary_df.loc[cha_index, 'Charge Capacity'] = df[cha_mask].groupby('full cycle')['Capacity'].max()
     summary_df['CE'] = summary_df['Charge Capacity']/summary_df['Discharge Capacity']
 
+
+    if 'Specific Capacity' in df.columns:
+        summary_df.loc[dis_index, 'Specific Discharge Capacity'] = df[dis_mask].groupby('full cycle')['Specific Capacity'].max()
+        summary_df.loc[cha_index, 'Specific Charge Capacity'] = df[cha_mask].groupby('full cycle')['Specific Capacity'].max()
+
+    if 'Specific Capacity (Area)' in df.columns:
+        summary_df.loc[dis_index, 'Specific Discharge Capacity (Area)'] = df[dis_mask].groupby('full cycle')['Specific Capacity (Area)'].max()
+        summary_df.loc[cha_index, 'Specific Charge Capacity (Area)'] = df[cha_mask].groupby('full cycle')['Specific Capacity (Area)'].max()
+
+
     def average_voltage(capacity, voltage):
         return np.trapz(voltage, capacity)/max(capacity)
 

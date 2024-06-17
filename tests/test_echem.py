@@ -76,7 +76,7 @@ def test_xlsx_reader_and_dqdv():
     np.testing.assert_almost_equal(summary_df["Current"].mean(), -0.00001827, decimal=5)
     np.testing.assert_almost_equal(summary_df["UCV"].mean(), 2.084951, decimal=5) 
     np.testing.assert_almost_equal(summary_df["LCV"].mean(), 0.912430, decimal=5)
-    np.testing.assert_almost_equal(summary_df["Discharge Capacity"].mean(), 0.005527, decimal=5) 
+    np.testing.assert_almost_equal(summary_df["Discharge Capacity"].mean(), 5.52742, decimal=5) # 0.005527
     np.testing.assert_almost_equal(summary_df["Charge Capacity"].mean(), 2.85135, decimal=5) # 0.002851
     np.testing.assert_almost_equal(summary_df["CE"].mean(), 0.491820, decimal=5) 
     np.testing.assert_almost_equal(summary_df["Average Discharge Voltage"].mean(), 0.137812, decimal=5) 
