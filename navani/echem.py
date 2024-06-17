@@ -547,6 +547,26 @@ Processing values by cycle number
 def cycle_summary(df, current_label=None):
     """
     Computes summary statistics for each full cycle returning a new dataframe
+    with the following columns:
+    - 'Current': The average current for the cycle
+    - 'UCV': The upper cut-off voltage for the cycle
+    - 'LCV': The lower cut-off voltage for the cycle
+    - 'Discharge Capacity': The maximum discharge capacity for the cycle
+    - 'Charge Capacity': The maximum charge capacity for the cycle
+    - 'CE': The charge efficiency for the cycle (Discharge Capacity/Charge Capacity)
+    - 'Specific Discharge Capacity': The maximum specific discharge capacity for the cycle
+    - 'Specific Charge Capacity': The maximum specific charge capacity for the cycle
+    - 'Specific Discharge Capacity (Area)': The maximum specific discharge capacity for the cycle
+    - 'Specific Charge Capacity (Area)': The maximum specific charge capacity for the cycle
+    - 'Average Discharge Voltage': The average discharge voltage for the cycle
+    - 'Average Charge Voltage': The average charge voltage for the cycle
+    
+    Args:
+        df (pandas.DataFrame): The input DataFrame containing the data.
+        current_label (str, optional): The label of the current column. Defaults to None and compares to a list of known current labels.
+
+    Returns:
+        pandas.DataFrame: The summary DataFrame with the calculated values.
     """
     df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
 
@@ -614,6 +634,19 @@ PLOTTING
 def charge_discharge_plot(df, full_cycle, colormap=None):
     """
     Function for plotting individual or multi but discrete charge discharge cycles
+
+    Args:
+        df (DataFrame): The input dataframe containing the data for plotting.
+        full_cycle (int or list of ints): The full cycle number(s) to plot. If an integer is provided, a single cycle will be plotted (charge and discharge). If a list is provided, multiple cycles will be plotted.
+        colormap (str, optional): The colormap to use for coloring the cycles. If not provided, a default colormap will be used based on the number of cycles.
+
+    Returns:
+        fig (Figure): The matplotlib Figure object.
+        ax (Axes): The matplotlib Axes object.
+
+    Raises:
+        ValueError: If there are too many cycles for the default colormaps. (20)
+
     """
     fig, ax = plt.subplots()
 
@@ -660,13 +693,27 @@ def charge_discharge_plot(df, full_cycle, colormap=None):
 
 def multi_cycle_plot(df, cycles, colormap='viridis'):
     """
-    Function for plotting continuously coloured cycles (useful for large numbers)
+    Function for plotting continuously coloured cycles (useful for large numbers). The cycle numbers correspond to half cycles.
 
-    Supply the cycles as half cycle numbers e.g 1, 2 are discharge and charge for 
-    first cycle
+    Parameters:
+    - df: DataFrame
+        The input DataFrame containing the data to be plotted.
+    - cycles: list or array-like
+        A list of cycle numbers to be plotted, these are half cycles.
+    - colormap: str, optional
+        The name of the colormap to be used for coloring the cycles. Default is 'viridis'.
+
+    Returns:
+    - fig: matplotlib.figure.Figure
+        The generated figure object.
+    - ax: matplotlib.axes.Axes
+        The generated axes object.
     """
+
+    import matplotlib.pyplot as plt
     import matplotlib.cm as cm
     from matplotlib.colors import Normalize
+    import numpy as np
 
     fig, ax = plt.subplots()
     cm = plt.get_cmap(colormap)
@@ -691,10 +738,30 @@ def multi_dqdv_plot(df, cycles, colormap='viridis',
     polyorder_1 = 5, window_size_1=101,
     polyorder_2 = 5, window_size_2=1001,
     final_smooth=True):
+    """
+    Plot multiple dQ/dV cycles on the same plot with a colormap. Cycles correspond to half cycles. 
+    Uses the internal dqdv_single_cycle function to calculate the dQ/dV curves.
+
+    Parameters:
+    - df: DataFrame containing the data.
+    - cycles: List or array-like object of cycle numbers (half cycles) to plot.
+    - colormap: Name of the colormap to use (default: 'viridis').
+    - capacity_label: Label of the capacity column in the DataFrame (default: 'Capacity').
+    - voltage_label: Label of the voltage column in the DataFrame (default: 'Voltage').
+    - polynomial_spline (int, optional): Order of the spline interpolation for the capacity-voltage curve. Defaults to 3. Best results use odd numbers.
+    - s_spline (float, optional): Smoothing factor for the spline interpolation. Defaults to 1e-5.
+    - polyorder_1 (int, optional): Order of the polynomial for the first smoothing filter (Before spline fitting). Defaults to 5. Best results use odd numbers.
+    - window_size_1 (int, optional): Size of the window for the first smoothing filter. (Before spline fitting). Defaults to 101. Must be odd.
+    - polyorder_2 (int, optional): Order of the polynomial for the second optional smoothing filter. Defaults to 5. (After spline fitting and differentiation). Best results use odd numbers.
+    - window_size_2 (int, optional): Size of the window for the second optional smoothing filter. Defaults to 1001. (After spline fitting and differentiation). Must be odd.
+    - final_smooth (bool, optional): Whether to apply final smoothing to the dq/dv curve. Defaults to True.
+
+    Returns:
+    - fig: The matplotlib figure object.
+    - ax: The matplotlib axes object.
 
     """
-    Plotting multi dQ/dV cyles on the same plot with a colormap.
-    """
+    import matplotlib.pyplot as plt
     import matplotlib.cm as cm
     from matplotlib.colors import Normalize
 
