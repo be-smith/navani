@@ -19,12 +19,12 @@ res_col_dict = {'Voltage': 'Voltage',
 mpr_col_dict = {'Voltage': 'Ewe/V',
                 'Capacity': 'Capacity'}
 
-current_labels = ['Current', 'Current(A)', 'I /mA', 'Current/mA']
+current_labels = ['Current', 'Current(A)', 'I /mA', 'Current/mA', 'I/mA', '<I>/mA']
 
 
 def echem_file_loader(filepath, mass=None, area=None):
     """
-    Loads a variety of electrochemical filetypes and tries to construct the most useful measurements in a 
+    Loads a variety of electrochemical filetypes and tries to construct the most useful measurements in a
     consistent way, with consistent column labels. Outputs a dataframe with the original columns, and these constructed columns:
     
     - "state": R for rest, 0 for discharge, 1 for charge (defined by the current direction +ve or -ve)
@@ -33,9 +33,11 @@ def echem_file_loader(filepath, mass=None, area=None):
     - "cycle change": Boolean column that is True when the state changes
     - "Capacity": The capacity of the cell, each half cycle it resets to 0 - In general this will be in mAh - however it depends what unit the original file is in - Arbin Ah automatically converted to mAh
     - "Voltage": The voltage of the cell
-    - "Current": The current of the cell
+    - "Current": The current of the cell - In general this will be in mA - however it depends what unit the original file is in
     - "Specific Capacity": The capacity of the cell divided by the mass of the cell if mass provided
+    - "Specific Capacity (Area)": The capacity of the cell divided by the area of the cell if area provided
     - "Current Density": The current of the cell divided by the area of the cell is area provided
+    - "Specific Current": The current of the cell divided by the mass of the cell
     
     From these measurements, everything you want to know about the electrochemistry can be calculated.
     
@@ -66,14 +68,17 @@ def echem_file_loader(filepath, mass=None, area=None):
         dat.close()
         df = arbin_res(df)
 
+    # Currently .txt files are assumed to be from an ivium cycler - this may need to be changed
+    # These have time, current and voltage columns only
     elif extension == '.txt':
         df = pd.read_csv(os.path.join(filepath), sep='\t')
-        # Checking columns are ex exact match
+        # Checking columns are an exact match
         if set(['time /s', 'I /mA', 'E /V']) - set(df.columns) == set([]):
             df = ivium_processing(df)
         else:
-            print('Columns did not match known .txt column layous')
+            raise ValueError('Columns do not match expected columns for an ivium .txt file')
 
+    # Landdt and Arbin can output .xlsx and .xls files
     elif extension in ['.xlsx', '.xls']:
         if extension == '.xlsx':
             xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
@@ -81,10 +86,12 @@ def echem_file_loader(filepath, mass=None, area=None):
             xlsx = pd.ExcelFile(os.path.join(filepath))
 
         names = xlsx.sheet_names
-        # Edit this in a bit
+        # Use different land processing if all exported as one sheet (different versions of landdt software)
         if len(names) == 1:
             df = xlsx.parse(0)
             df = new_land_processing(df)
+
+        # If Record is a sheet name, then it is a landdt file
         elif "Record" in names[0]:
             df_list = [xlsx.parse(0)]
             if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
@@ -102,8 +109,11 @@ def echem_file_loader(filepath, mass=None, area=None):
             df = pd.concat(df_list)
             df.set_index('Index', inplace=True)
             df = old_land_processing(df)
+
+        # If Channel is a sheet name, then it is an arbin file
         else:
             df_list = []
+            # Remove the Channel_Chart sheet if it exists as it's arbin's charting sheet
             if 'Channel_Chart' in names:
                 names.remove('Channel_Chart')
             for count, name in enumerate(names):
@@ -114,8 +124,11 @@ def echem_file_loader(filepath, mass=None, area=None):
                 df = arbin_excel(df)
             else:
                 raise ValueError('Names of sheets not recognised')
+            
+    # Neware files are .nda or .ndax
     elif extension in (".nda", ".ndax"):
         df = neware_reader(filepath)
+
     # If the file is a csv previously processed by navani
     # Check for the columns that are expected (Capacity, Voltage, Current, Cycle numbers, state)
     elif extension == '.csv':
@@ -123,9 +136,16 @@ def echem_file_loader(filepath, mass=None, area=None):
                          index_col=0)
         expected_columns = ['Capacity', 'Voltage', 'half cycle', 'full cycle', 'Current', 'state']
         if all(col in df.columns for col in expected_columns):
+            # Pandas sometimes reads in the state column as a string - ensure all columns we use are the correct type
+            df['state'] = df['state'].replace('1', 1)
+            df['state'] = df['state'].replace('0', 0)
+            df[['Capacity', 'Voltage', 'Current']] = df[['Capacity', 'Voltage', 'Current']].astype(float)
+            df[['full cycle', 'half cycle']] = df[['full cycle', 'half cycle']].astype(int)
             pass
         else:
             raise ValueError('Columns do not match expected columns for navani processed csv')
+        
+    # If it's a filetype not seen before raise an error
     else:
         print(extension)
         raise RuntimeError("Filetype {extension=} not recognised.")
@@ -134,7 +154,7 @@ def echem_file_loader(filepath, mass=None, area=None):
     if "half cycle" in df.columns:
         df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
 
-
+    # Adding specific capacity and current density columns if mass and area are provided
     if mass:
         df['Specific Capacity'] = df['Capacity']/mass
     if area:
@@ -147,9 +167,19 @@ def echem_file_loader(filepath, mass=None, area=None):
     return df
 
 def arbin_res(df):
+    """
+    Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the galvani res2sqlite for Arbin .res files.
+
+    Args:
+        df (pandas.DataFrame): The input DataFrame containing the data.
+
+    Returns:
+        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+    """
     df.set_index('Data_Point', inplace=True)
     df.sort_index(inplace=True)
 
+    # Deciding on charge and discharge and rest based on current direction
     def arbin_state(x):
         if x > 0:
             return 0
@@ -164,8 +194,11 @@ def arbin_res(df):
     df['state'] = df['Current'].map(lambda x: arbin_state(x))
     not_rest_idx = df[df['state'] != 'R'].index
     df['cycle change'] = False
+    # If the state changes, then it's a half cycle change
     df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
     df['half cycle'] = (df['cycle change'] == True).cumsum()
+
+    # Calculating the capacity and changing to mAh
     if 'Discharge_Capacity' in df.columns:
         df['Capacity'] = df['Discharge_Capacity'] + df['Charge_Capacity']
     elif 'Discharge_Capacity(Ah)' in df.columns:
@@ -173,6 +206,7 @@ def arbin_res(df):
     else:
         raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
 
+    # Subtracting the initial capacity from each half cycle so it begins at zero
     for cycle in df['half cycle'].unique():
         idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index
         if len(idx) > 0:
@@ -186,6 +220,15 @@ def arbin_res(df):
 
 
 def biologic_processing(df):
+    """
+    Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the galvani MPRfile for Biologic .mpr files.
+
+    Args:
+        df (pandas.DataFrame): The input DataFrame containing the data.
+
+    Returns:
+        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+    """
     # Dealing with the different column layouts for biologic files
 
     def bio_state(x):
@@ -202,7 +245,7 @@ def biologic_processing(df):
     if "time/s" in df.columns:
         df["Time"] = df["time/s"]
 
-    # Adding current column that galvani can't export for some reason
+    # Adding current column that galvani can't (sometimes) export for some reason
     if ('time/s' in df.columns) and ('dQ/mA.h' in df.columns or 'dq/mA.h' in df.columns):
         df['dt'] = np.diff(df['time/s'], prepend=0)
         if 'dQ/mA.h' not in df.columns:
@@ -210,7 +253,7 @@ def biologic_processing(df):
         df['Current'] = df['dQ/mA.h']/(df['dt']/3600)
 
         if np.isnan(df['Current'].iloc[0]):
-        	df.loc[df.index[0], 'Current'] = 0
+            df.loc[df.index[0], 'Current'] = 0
 
         df['state'] = df['Current'].map(lambda x: bio_state(x))
 
@@ -224,6 +267,7 @@ def biologic_processing(df):
 
         df['state'] = df['Current'].map(lambda x: bio_state(x))
 
+    # If current has been correctly exported then we can use that
     elif('I/mA' in df.columns) and ('Q charge/discharge/mA.h' not in df.columns) and ('dQ/mA.h' not in df.columns) and ('Ewe/V' in df.columns):
         df['Current'] = df['I/mA']
         df['dV'] = np.diff(df['Ewe/V'], prepend=df['Ewe/V'][0])
@@ -273,6 +317,17 @@ def biologic_processing(df):
         return df
 
 def ivium_processing(df):
+    """
+    Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the Ivium .txt files.
+    For Ivium files the cycler records the bare minimum (Current, Voltage, Time) and everything else is calculated from that.
+
+    Args:
+        df (pandas.DataFrame): The input DataFrame containing the data.
+
+    Returns:
+        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+    """
+
     df['dq'] = np.diff(df['time /s'], prepend=0)*df['I /mA']
     df['Capacity'] = df['dq'].cumsum()/3600
     def ivium_state(x):
@@ -292,6 +347,16 @@ def ivium_processing(df):
     return df
 
 def new_land_processing(df):
+    """
+    Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the Landdt .xlsx files.
+    Landdt has many different ways of exporting the data - so this is for one specific way of exporting the data.
+
+    Args:
+        df (pandas.DataFrame): The input DataFrame containing the data.
+
+    Returns:
+        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+    """
     # Remove half cycle == 0 for initial resting
     if 'Voltage/V' not in df.columns:
         column_to_search = df.columns[df.isin(['Index']).any()][0]
@@ -321,6 +386,16 @@ def new_land_processing(df):
     return df
 
 def old_land_processing(df):
+    """
+    Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the Landdt .xlsx files.
+    Landdt has many different ways of exporting the data - so this is for one specific way of exporting the data.
+
+    Args:
+        df (pandas.DataFrame): The input DataFrame containing the data.
+
+    Returns:
+        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+    """
     df = df[df['Current/mA'].apply(type) != str]
     df = df[pd.notna(df['Current/mA'])]
 
@@ -344,6 +419,16 @@ def old_land_processing(df):
     return df
 
 def arbin_excel(df):
+    """
+    Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the Arbin .xlsx files.
+
+    Args:
+        df (pandas.DataFrame): The input DataFrame containing the data.
+
+    Returns:
+        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+    """
+
     df.reset_index(inplace=True)
 
     def arbin_state(x):
@@ -382,7 +467,15 @@ def arbin_excel(df):
     return df
 
 def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
-    """Reads a Neware NDA/NDAX file into a pandas DataFrame using NewareNDA."""
+    """
+    Process the given DataFrame to calculate capacity and cycle changes. Works for neware .nda and .ndax files.
+
+    Args:
+        df (pandas.DataFrame): The input DataFrame containing the data.
+
+    Returns:
+        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+    """
     from NewareNDA.NewareNDA import read
     filename = str(filename)
     df = read(filename)
@@ -408,7 +501,25 @@ def dqdv_single_cycle(capacity, voltage,
                     polyorder_1 = 5, window_size_1=101,
                     polyorder_2 = 5, window_size_2=1001,
                     final_smooth=True):
+    """
+    Calculate the derivative of capacity with respect to voltage (dq/dv) for a single cycle. Data is initially smoothed by a Savitzky-Golay filter and then interpolated and differentiated using a spline.
+    Optionally the dq/dv curve can be smoothed again by another Savitzky-Golay filter.
 
+    Args:
+        capacity (array-like): Array of capacity values.
+        voltage (array-like): Array of voltage values.
+        polynomial_spline (int, optional): Order of the spline interpolation for the capacity-voltage curve. Defaults to 3. Best results use odd numbers.
+        s_spline (float, optional): Smoothing factor for the spline interpolation. Defaults to 1e-5.
+        polyorder_1 (int, optional): Order of the polynomial for the first smoothing filter (Before spline fitting). Defaults to 5. Best results use odd numbers.
+        window_size_1 (int, optional): Size of the window for the first smoothing filter. (Before spline fitting). Defaults to 101. Must be odd.
+        polyorder_2 (int, optional): Order of the polynomial for the second optional smoothing filter. Defaults to 5. (After spline fitting and differentiation). Best results use odd numbers.
+        window_size_2 (int, optional): Size of the window for the second optional smoothing filter. Defaults to 1001. (After spline fitting and differentiation). Must be odd.
+        final_smooth (bool, optional): Whether to apply final smoothing to the dq/dv curve. Defaults to True.
+
+    Returns:
+        tuple: A tuple containing three arrays: x_volt (array of voltage values), dqdv (array of dq/dv values), smooth_cap (array of smoothed capacity values).
+    """
+    
     import pandas as pd
     import numpy as np
     from scipy.interpolate import splrep, splev
