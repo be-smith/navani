@@ -3,6 +3,7 @@ from galvani import res2sqlite as r2s
 
 import pandas as pd
 import numpy as np
+import tempfile
 from scipy.signal import savgol_filter
 import sqlite3
 import os
@@ -58,13 +59,13 @@ def echem_file_loader(filepath, mass=None, area=None):
     # arbin .res file - uses an sql server and requires mdbtools installed
     # sudo apt get mdbtools for windows and mac
     elif extension == '.res': 
-        Output_file = 'placeholder_string'
-        r2s.convert_arbin_to_sqlite(os.path.join(filepath), Output_file)
-        dat = sqlite3.connect(Output_file)
-        query = dat.execute("SELECT * From Channel_Normal_Table")
-        cols = [column[0] for column in query.description]
-        df = pd.DataFrame.from_records(data = query.fetchall(), columns = cols)
-        dat.close()
+        with tempfile.NamedTemporaryFile(delete=True) as tmpfile:
+            r2s.convert_arbin_to_sqlite(os.path.join(filepath), tmpfile.name)
+            dat = sqlite3.connect(tmpfile.name)
+            query = dat.execute("SELECT * From Channel_Normal_Table")
+            cols = [column[0] for column in query.description]
+            df = pd.DataFrame.from_records(data = query.fetchall(), columns = cols)
+            dat.close()
         df = arbin_res(df)
 
     # Currently .txt files are assumed to be from an ivium cycler - this may need to be changed
