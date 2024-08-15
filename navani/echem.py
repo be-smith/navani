@@ -494,9 +494,9 @@ def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh
 
     df["Current"] = 1000 * df["Current(mA)"]
     df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
-    df["state"][df["Status"] == "Rest"] = "R"
-    df["state"][df["Status"] == "CC_Chg"] = 1
-    df["state"][df["Status"] == "CC_DChg"] = 0
+    df.loc[df["Status"] == "Rest", "state"] = "R"
+    df.loc[df["Status"] == "CC_Chg", "state"] = 1
+    df.loc[df["Status"] == "CC_DChg", "state"] = 0
     df["half cycle"] = df["Cycle"]
     df['cycle change'] = False
     not_rest_idx = df[df['state'] != 'R'].index
