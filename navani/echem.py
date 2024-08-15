@@ -3,7 +3,6 @@ from galvani import res2sqlite as r2s
 
 import pandas as pd
 import numpy as np
-import warnings
 from scipy.signal import savgol_filter
 import sqlite3
 import os
@@ -26,7 +25,7 @@ def echem_file_loader(filepath, mass=None, area=None):
     """
     Loads a variety of electrochemical filetypes and tries to construct the most useful measurements in a
     consistent way, with consistent column labels. Outputs a dataframe with the original columns, and these constructed columns:
-    
+
     - "state": R for rest, 0 for discharge, 1 for charge (defined by the current direction +ve or -ve)
     - "half cycle": Counts the half cycles, rests are not included as a half cycle
     - "full cycle": Counts the full cycles, rests are not included as a full cycle
@@ -95,7 +94,7 @@ def echem_file_loader(filepath, mass=None, area=None):
         elif "Record" in names[0]:
             df_list = [xlsx.parse(0)]
             if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
-                raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=}")
+                raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
             col_names = df_list[0].columns
 
             for sheet_name in names[1:]:
@@ -104,7 +103,7 @@ def echem_file_loader(filepath, mass=None, area=None):
                         df_list.append(xlsx.parse(sheet_name, header=None))
             for sheet in df_list:
                 if not isinstance(sheet, pd.DataFrame):
-                    raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=}")
+                    raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
                 sheet.columns = col_names
             df = pd.concat(df_list)
             df.set_index('Index', inplace=True)
@@ -123,7 +122,7 @@ def echem_file_loader(filepath, mass=None, area=None):
                 df = pd.concat(df_list)
                 df = arbin_excel(df)
             else:
-                raise ValueError('Names of sheets not recognised')
+                raise ValueError('Sheet names not recognised as Arbin or Lanndt Excel exports, this file type is not supported.')
             
     # Neware files are .nda or .ndax
     elif extension in (".nda", ".ndax"):
@@ -466,12 +465,14 @@ def arbin_excel(df):
 
     return df
 
-def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
+def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh") -> pd.DataFrame:
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for neware .nda and .ndax files.
 
     Args:
         df (pandas.DataFrame): The input DataFrame containing the data.
+        expected_capacity_unit (str, optional): The expected unit of the capacity column (even if the column name
+            specifies "mAh" explicitly, some instruments seem to write in "Ah").
 
     Returns:
         pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
@@ -483,7 +484,13 @@ def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
     # remap to expected navani columns and units (mAh, V, mA) Our Neware machine reports mAh in column name but is in fact Ah...
     df.set_index("Index", inplace=True)
     df.index.rename("index", inplace=True)
-    df["Capacity"] = 1000 * (df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"])
+    if expected_capacity_unit == "Ah":
+        df["Capacity"] = 1000 * (df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"])
+    elif expected_capacity_unit == "mAh":
+        df["Capacity"] = df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"]
+    else:
+        raise RuntimeError("Unexpected capacity unit: {expected_capacity_unit=}, should be one of 'mAh', 'Ah'.")
+
     df["Current"] = 1000 * df["Current(mA)"]
     df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
     df["state"][df["Status"] == "Rest"] = "R"
