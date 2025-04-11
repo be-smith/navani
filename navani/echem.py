@@ -493,6 +493,7 @@ def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
     df['cycle change'] = False
     not_rest_idx = df[df['state'] != 'R'].index
     df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
+    df['half cycle'] = (df['cycle change'] == True).cumsum()
     return df
 
 
