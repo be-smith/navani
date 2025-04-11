@@ -166,7 +166,7 @@ def echem_file_loader(filepath, mass=None, area=None):
 
     return df
 
-def arbin_res(df):
+def arbin_res(df) -> pd.DataFrame:
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the galvani res2sqlite for Arbin .res files.
 
@@ -174,7 +174,7 @@ def arbin_res(df):
         df (pandas.DataFrame): The input DataFrame containing the data.
 
     Returns:
-        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+        df (pandas.DataFrame): The processed DataFrame with added columns for capacity and cycle changes.
     """
     df.set_index('Data_Point', inplace=True)
     df.sort_index(inplace=True)
