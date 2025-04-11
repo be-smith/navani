@@ -3,7 +3,7 @@ from galvani import res2sqlite as r2s
 
 import pandas as pd
 import numpy as np
-import warnings
+import tempfile
 from scipy.signal import savgol_filter
 import sqlite3
 import os
@@ -12,7 +12,7 @@ from typing import Union
 from pathlib import Path
 
 # Different cyclers name their columns slightly differently 
-# These dictionaries are guides for the main things you want to plot and what they are called
+# These dictionaries are guides for the main things you want to plot and what they are called and what they are called
 res_col_dict = {'Voltage': 'Voltage',
                 'Capacity': 'Capacity'}
 
@@ -59,13 +59,13 @@ def echem_file_loader(filepath, mass=None, area=None):
     # arbin .res file - uses an sql server and requires mdbtools installed
     # sudo apt get mdbtools for windows and mac
     elif extension == '.res': 
-        Output_file = 'placeholder_string'
-        r2s.convert_arbin_to_sqlite(os.path.join(filepath), Output_file)
-        dat = sqlite3.connect(Output_file)
-        query = dat.execute("SELECT * From Channel_Normal_Table")
-        cols = [column[0] for column in query.description]
-        df = pd.DataFrame.from_records(data = query.fetchall(), columns = cols)
-        dat.close()
+        with tempfile.NamedTemporaryFile(delete=True) as tmpfile:
+            r2s.convert_arbin_to_sqlite(os.path.join(filepath), tmpfile.name)
+            dat = sqlite3.connect(tmpfile.name)
+            query = dat.execute("SELECT * From Channel_Normal_Table")
+            cols = [column[0] for column in query.description]
+            df = pd.DataFrame.from_records(data = query.fetchall(), columns = cols)
+            dat.close()
         df = arbin_res(df)
 
     # Currently .txt files are assumed to be from an ivium cycler - this may need to be changed
@@ -95,7 +95,7 @@ def echem_file_loader(filepath, mass=None, area=None):
         elif "Record" in names[0]:
             df_list = [xlsx.parse(0)]
             if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
-                raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=}")
+                raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
             col_names = df_list[0].columns
 
             for sheet_name in names[1:]:
@@ -104,7 +104,7 @@ def echem_file_loader(filepath, mass=None, area=None):
                         df_list.append(xlsx.parse(sheet_name, header=None))
             for sheet in df_list:
                 if not isinstance(sheet, pd.DataFrame):
-                    raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=}")
+                    raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
                 sheet.columns = col_names
             df = pd.concat(df_list)
             df.set_index('Index', inplace=True)
@@ -123,7 +123,7 @@ def echem_file_loader(filepath, mass=None, area=None):
                 df = pd.concat(df_list)
                 df = arbin_excel(df)
             else:
-                raise ValueError('Names of sheets not recognised')
+                raise ValueError('Sheet names not recognised as Arbin or Lanndt Excel exports, this file type is not supported.')
             
     # Neware files are .nda or .ndax
     elif extension in (".nda", ".ndax"):
@@ -202,7 +202,7 @@ def arbin_res(df) -> pd.DataFrame:
     if 'Discharge_Capacity' in df.columns:
         df['Capacity'] = df['Discharge_Capacity'] + df['Charge_Capacity']
     elif 'Discharge_Capacity(Ah)' in df.columns:
-        df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] * 1000
+        df['Capacity'] = (df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']) * 1000
     else:
         raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
 
@@ -466,12 +466,14 @@ def arbin_excel(df):
 
     return df
 
-def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
+def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh") -> pd.DataFrame:
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for neware .nda and .ndax files.
 
     Args:
         df (pandas.DataFrame): The input DataFrame containing the data.
+        expected_capacity_unit (str, optional): The expected unit of the capacity column (even if the column name
+            specifies "mAh" explicitly, some instruments seem to write in "Ah").
 
     Returns:
         pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
@@ -483,12 +485,18 @@ def neware_reader(filename: Union[str, Path]) -> pd.DataFrame:
     # remap to expected navani columns and units (mAh, V, mA) Our Neware machine reports mAh in column name but is in fact Ah...
     df.set_index("Index", inplace=True)
     df.index.rename("index", inplace=True)
-    df["Capacity"] = 1000 * (df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"])
+    if expected_capacity_unit == "Ah":
+        df["Capacity"] = 1000 * (df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"])
+    elif expected_capacity_unit == "mAh":
+        df["Capacity"] = df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"]
+    else:
+        raise RuntimeError("Unexpected capacity unit: {expected_capacity_unit=}, should be one of 'mAh', 'Ah'.")
+
     df["Current"] = 1000 * df["Current(mA)"]
     df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
-    df["state"][df["Status"] == "Rest"] = "R"
-    df["state"][df["Status"] == "CC_Chg"] = 1
-    df["state"][df["Status"] == "CC_DChg"] = 0
+    df.loc[df["Status"] == "Rest", "state"] = "R"
+    df.loc[df["Status"] == "CC_Chg", "state"] = 1
+    df.loc[df["Status"] == "CC_DChg", "state"] = 0
     df["half cycle"] = df["Cycle"]
     df['cycle change'] = False
     not_rest_idx = df[df['state'] != 'R'].index

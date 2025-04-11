@@ -5,11 +5,11 @@ name = "pypi"
 
 [packages]
 requests = "*"
-numpy = "*"
-pandas = "*"
+numpy = "~= 1.26, < 2"
+pandas = "~= 2.2, < 3"
 openpyxl = "*"
 galvani = ">= 0.4.1"
-NewareNDA = "*"
+NewareNDA = ">= 2024.8.1"
 scipy = "*"
 matplotlib = "*"
 
