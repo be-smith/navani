@@ -1,0 +1,12 @@
+site_name: Navani
+nav:
+  - Home: index.md
+  - Tutorial: tutorials.md
+  - How-to Guides: how-to-guides.md
+  - Reference: reference.md
+  - API: api.md
+theme: material
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
