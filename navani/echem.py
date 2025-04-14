@@ -169,23 +169,51 @@ def echem_file_loader(filepath, mass=None, area=None):
 
 def multi_echem_file_loader(filepaths, mass=None, area=None):
     """
-    Loads multiple electrochemical files and concatenates them into a single dataframe. Files are ordered by the order they are passed in.
-    The files can be of different types, and the function will process them accordingly.
-    The function will also add the following columns to the dataframe:
-    Old Capacity: The original capacity column from an individual load using echem_file_loader of each file
-    Capacity: The new calculated capacity column from the current and time columns - this is more robust if cycles are spread across multiple files
+    Loads and concatenates multiple electrochemical experiment files into a single DataFrame.
+
+    This function handles time alignment across multiple files and reconstructs the capacity column
+    when time and current data are reliable. It supports files that:
+    - Start at time zero (relative time),
+    - Continue increasing in time across files (absolute time),
+    - Otherwise, raises a warning and defaults to using the original capacity values.
+
+    When time is valid across files, a new 'Capacity' column is calculated from current and time data
+    using the trapezoidal method (equivalent to Ivium’s cycler logic). The original capacity column is preserved
+    as 'Old Capacity' if it differs.
+
+    Cycle information is reconstructed using the 'state' column to identify half and full cycles.
+
+    If mass or area is provided, specific capacity and current density metrics are added.
+
     Args:
-        filepaths (list): List of file paths to the electrochemical files.
-        mass (float, optional): The mass of the cell. Defaults to None.
-        area (float, optional): The area of the cell. Defaults to None.
+        filepaths (list of str): Paths to electrochemical data files to be loaded.
+        mass (float, optional): Mass of the electrode (in mg). Used for specific capacity and current.
+        area (float, optional): Electrode area (in cm²). Used for areal metrics.
+
     Returns:
-        pandas.DataFrame: A dataframe with the original columns and the constructed columns from all files.
+        pandas.DataFrame: Combined and processed electrochemical data.
     """
+    
+    time_warning_flag = False
     df_list = []
-    for filepath in filepaths:
+    final_time = 0
+    for i, filepath in enumerate(filepaths):
         df = echem_file_loader(filepath, mass=mass, area=area)
+        if i == 0:
+            final_time = df['Time'].iloc[-1]
+        else:
+            start_time = df['Time'].iloc[0]
+            if np.isclose(start_time, 0):
+                df['Time'] += final_time
+            elif start_time > final_time:
+                pass  # Leave as is
+            else:
+                warnings.warn("Time column for each file does not start at 0 or begin after previous file, this may cause issues with capacity calculations. Will default to using the old capacity column.")
+                time_warning_flag = True
+            final_time = df['Time'].iloc[-1]
         df_list.append(df)
 
+    # Concatenate the dataframes
     combined_df = pd.concat(df_list, ignore_index=True)
     # Reset the index
     combined_df.reset_index(drop=True, inplace=True)
@@ -199,7 +227,7 @@ def multi_echem_file_loader(filepaths, mass=None, area=None):
 
     # Tidying up Capacity columns using current and time if available using the same method as the Ivium cycler
     # Fixes issues with mid cycle file merges, feels like a janky solution but should work if Time and Current are accuractely captured (time must be relative to the start of the experiment)
-    if 'Time' in combined_df.columns and 'Current' in combined_df.columns:
+    if 'Time' in combined_df.columns and 'Current' in combined_df.columns and (not time_warning_flag):
         combined_df['dq'] = np.diff(combined_df['Time'], prepend=0)*combined_df['Current']
         for half_cycle in combined_df['half cycle'].unique():
             mask = combined_df['half cycle'] == half_cycle
@@ -225,7 +253,7 @@ def multi_echem_file_loader(filepaths, mass=None, area=None):
     if area:
         combined_df['Specific Capacity (Area)'] = combined_df['Capacity']/area
     if mass and 'Current' in combined_df.columns:
-        combined_df['Specific Current'] = df['Current']/mass
+        combined_df['Specific Current'] = combined_df['Current']/mass
     if area and 'Current' in combined_df.columns:
         combined_df['Current Density'] = combined_df['Current']/area
     return combined_df
