@@ -647,7 +647,7 @@ def cycle_summary(df, current_label=None):
     # Figuring out which column is current
     if current_label is not None:
         df[current_label] = df[current_label].astype(float)
-        summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
+        summary_df = df.groupby('full cycle')[current_label].apply(lambda x: x.abs().mean()).to_frame()
     else:
         intersection = set(current_labels) & set(df.columns)
         if len(intersection) > 0:
@@ -657,10 +657,13 @@ def cycle_summary(df, current_label=None):
                     current_label = label
                     break
             df[current_label] = df[current_label].astype(float)
-            summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
+            summary_df = df.groupby('full cycle')[current_label].apply(lambda x: x.abs().mean()).to_frame()
         else:
             print('Could not find Current column label. Please supply label to function: current_label=label')
             summary_df = pd.DataFrame(index=df['full cycle'].unique())
+
+    if 'Current Density' in df.columns:
+        summary_df['Current Density'] = df.groupby('full cycle')['Current Density'].apply(lambda x: x.abs().mean())
 
     summary_df['UCV'] = df.groupby('full cycle')['Voltage'].max()
     summary_df['LCV'] = df.groupby('full cycle')['Voltage'].min()
