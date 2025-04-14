@@ -10,6 +10,7 @@ import os
 import matplotlib.pyplot as plt
 from typing import Union
 from pathlib import Path
+import warnings
 
 # Different cyclers name their columns slightly differently 
 # These dictionaries are guides for the main things you want to plot and what they are called
@@ -166,6 +167,107 @@ def echem_file_loader(filepath, mass=None, area=None):
 
     return df
 
+def multi_echem_file_loader(filepaths, mass=None, area=None):
+    """
+    Loads and concatenates multiple electrochemical experiment files into a single DataFrame.
+
+    This function handles time alignment across multiple files and reconstructs the capacity column
+    when time and current data are reliable. It supports files that:
+    - Start at time zero (relative time),
+    - Continue increasing in time across files (absolute time),
+    - Otherwise, raises a warning and defaults to using the original capacity values.
+    If no time column is found, a warning is raised and the original capacity column is used, and time is treated as an index.
+
+    When time is valid across files, a new 'Capacity' column is calculated from current and time data
+    using the trapezoidal method (equivalent to Ivium’s cycler logic). The original capacity column is preserved
+    as 'Old Capacity' if it differs.
+
+    Cycle information is reconstructed using the 'state' column to identify half and full cycles.
+
+    If mass or area is provided, specific capacity and current density metrics are added.
+
+    Args:
+        filepaths (list of str): Paths to electrochemical data files to be loaded.
+        mass (float, optional): Mass of the electrode (in mg). Used for specific capacity and current.
+        area (float, optional): Electrode area (in cm²). Used for areal metrics.
+
+    Returns:
+        pandas.DataFrame: Combined and processed electrochemical data.
+    """
+    
+    time_warning_flag = False
+    df_list = []
+    final_time = 0
+    for i, filepath in enumerate(filepaths):
+        df = echem_file_loader(filepath, mass=mass, area=area)
+        df['Source File'] = os.path.basename(filepath)
+        # Check if the time column is present
+        if 'Time' not in df.columns:
+            warnings.warn("Time column not found, using the original capacity column")
+            time_warning_flag = True
+            # If the time column is not present, we can't do anything with it
+            df['Time'] = np.arange(len(df))
+        if i == 0:
+            final_time = df['Time'].iloc[-1]
+        else:
+            start_time = df['Time'].iloc[0]
+            if np.isclose(start_time, 0):
+                df['Time'] += final_time
+            elif start_time > final_time:
+                pass  # Leave as is
+            else:
+                warnings.warn("Time column for each file does not start at 0 or begin after previous file, this may cause issues with capacity calculations. Will default to using the old capacity column.")
+                time_warning_flag = True
+            final_time = df['Time'].iloc[-1]
+        df_list.append(df)
+
+    # Concatenate the dataframes
+    combined_df = pd.concat(df_list, ignore_index=True)
+    # Reset the index
+    combined_df.reset_index(drop=True, inplace=True)
+    not_rest_idx = combined_df[combined_df['state'] != 'R'].index
+    combined_df['cycle change'] = False
+    # If the state changes, then it's a half cycle change
+    combined_df.loc[not_rest_idx, 'cycle change'] = combined_df.loc[not_rest_idx, 'state'].ne(combined_df.loc[not_rest_idx, 'state'].shift())
+    combined_df['half cycle'] = (combined_df['cycle change'] == True).cumsum()
+    # Adding a full cycle column
+    combined_df['full cycle'] = (combined_df['half cycle']/2).apply(np.ceil)
+
+    # Tidying up Capacity columns using current and time if available using the same method as the Ivium cycler
+    # Testing on Biologic data this maps exactly to the Q charge/discharge/mA.h column
+    # Fixes issues with mid cycle file merges, feels like a janky solution but should work if Time and Current are accuractely captured (time must be relative to the start of the experiment)
+    if 'Time' in combined_df.columns and 'Current' in combined_df.columns and (not time_warning_flag):
+        combined_df['dq'] = np.diff(combined_df['Time'], prepend=0)*combined_df['Current']
+        for half_cycle in combined_df['half cycle'].unique():
+            mask = combined_df['half cycle'] == half_cycle
+            idx = combined_df.index[mask]
+            combined_df.loc[idx, 'New Capacity'] = abs(combined_df.loc[idx, 'dq']).cumsum()/3600
+
+        # Tolerance settings
+        rtol = 1e-5  # relative tolerance
+        atol = 1e-8  # absolute tolerance
+
+        # Compare columns
+        combined_df['equal'] = np.isclose(combined_df['Capacity'], combined_df['New Capacity'], rtol=rtol, atol=atol)
+        # Check if any values are not equal
+        if not combined_df['equal'].all():
+            combined_df.rename(columns = {'Capacity':'Old Capacity'}, inplace = True)
+            combined_df.rename(columns = {'New Capacity':'Capacity'}, inplace = True)
+            # If the new capacity column is not equal to the original capacity column, then we need to replace it
+            warnings.warn("Capacity columns are not equal, replacing with new capacity column calculated from current and time columns and renaming the old capacity column to Old Capacity")
+
+    # Adding specific capacity and current density columns if mass and area are provided
+    if mass:
+        combined_df['Specific Capacity'] = combined_df['Capacity']/mass
+    if area:
+        combined_df['Specific Capacity (Area)'] = combined_df['Capacity']/area
+    if mass and 'Current' in combined_df.columns:
+        combined_df['Specific Current'] = combined_df['Current']/mass
+    if area and 'Current' in combined_df.columns:
+        combined_df['Current Density'] = combined_df['Current']/area
+    return combined_df
+
+
 def arbin_res(df):
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the galvani res2sqlite for Arbin .res files.
@@ -202,7 +304,7 @@ def arbin_res(df):
     if 'Discharge_Capacity' in df.columns:
         df['Capacity'] = df['Discharge_Capacity'] + df['Charge_Capacity']
     elif 'Discharge_Capacity(Ah)' in df.columns:
-        df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] * 1000
+        df['Capacity'] = (df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']) * 1000
     else:
         raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
 
@@ -215,8 +317,16 @@ def arbin_res(df):
             df.loc[cycle_idx, 'Capacity'] = df.loc[cycle_idx, 'Capacity'] - initial_capacity
         else:
             pass
-
-    return df
+    
+    if "Test_Time(s)" in df.columns:
+        df["Time"] = df["Test_Time(s)"]
+        return df
+    elif "Test_Time" in df.columns:
+        df["Time"] = df["Test_Time"]
+        return df
+    else:
+        warnings.warn("Time column not found")
+        return df
 
 
 def biologic_processing(df):
@@ -344,6 +454,7 @@ def ivium_processing(df):
         df.loc[idx, 'Capacity'] = abs(df.loc[idx, 'dq']).cumsum()/3600
     df['Voltage'] = df['E /V']
     df['Time'] = df['time /s']
+    df['Current'] = df['I /mA']
     return df
 
 def new_land_processing(df):
@@ -382,8 +493,16 @@ def new_land_processing(df):
     df['half cycle'] = (df['cycle change'] == True).cumsum()
     df['Voltage'] = df['Voltage/V']
     df['Capacity'] = df['Capacity/mAh']
-    df['Time'] = df['time /s']
-    return df
+    df['Current'] = df['Current/mA']
+    if 'time /s' in df.columns:
+        df['Time'] = df['time /s']
+        return df
+    elif 'TestTime/h' in df.columns:
+        df['Time'] = df['TestTime/h'] * 3600
+        return df
+    else:
+        warnings.warn("Time column not found")
+        return df
 
 def old_land_processing(df):
     """
@@ -416,7 +535,16 @@ def old_land_processing(df):
     df['half cycle'] = (df['cycle change'] == True).cumsum()
     df['Voltage'] = df['Voltage/V']
     df['Capacity'] = df['Capacity/mAh']
-    return df
+    df['Current'] = df['Current/mA']
+    if 'time /s' in df.columns:
+        df['Time'] = df['time /s']
+        return df
+    elif 'TestTime/h' in df.columns:
+        df['Time'] = df['TestTime/h'] * 3600
+        return df
+    else:
+        warnings.warn("Time column not found")
+        return df
 
 def arbin_excel(df):
     """
@@ -502,6 +630,8 @@ def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh
     not_rest_idx = df[df['state'] != 'R'].index
     df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
     df['half cycle'] = (df['cycle change'] == True).cumsum()
+    if 'Time' not in df.columns:
+        warnings.warn("Time column not found")
     return df
 
 
@@ -582,7 +712,7 @@ def cycle_summary(df, current_label=None):
     # Figuring out which column is current
     if current_label is not None:
         df[current_label] = df[current_label].astype(float)
-        summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
+        summary_df = df.groupby('full cycle')[current_label].apply(lambda x: x.abs().mean()).to_frame()
     else:
         intersection = set(current_labels) & set(df.columns)
         if len(intersection) > 0:
@@ -592,10 +722,13 @@ def cycle_summary(df, current_label=None):
                     current_label = label
                     break
             df[current_label] = df[current_label].astype(float)
-            summary_df = df.groupby('full cycle')[current_label].mean().to_frame()
+            summary_df = df.groupby('full cycle')[current_label].apply(lambda x: x.abs().mean()).to_frame()
         else:
             print('Could not find Current column label. Please supply label to function: current_label=label')
             summary_df = pd.DataFrame(index=df['full cycle'].unique())
+
+    if 'Current Density' in df.columns:
+        summary_df['Current Density'] = df.groupby('full cycle')['Current Density'].apply(lambda x: x.abs().mean())
 
     summary_df['UCV'] = df.groupby('full cycle')['Voltage'].max()
     summary_df['LCV'] = df.groupby('full cycle')['Voltage'].min()
