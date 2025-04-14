@@ -10,6 +10,7 @@ import os
 import matplotlib.pyplot as plt
 from typing import Union
 from pathlib import Path
+import warnings
 
 # Different cyclers name their columns slightly differently 
 # These dictionaries are guides for the main things you want to plot and what they are called
@@ -168,8 +169,11 @@ def echem_file_loader(filepath, mass=None, area=None):
 
 def multi_echem_file_loader(filepaths, mass=None, area=None):
     """
-    Loads multiple electrochemical files and concatenates them into a single dataframe.
+    Loads multiple electrochemical files and concatenates them into a single dataframe. Files are ordered by the order they are passed in.
     The files can be of different types, and the function will process them accordingly.
+    The function will also add the following columns to the dataframe:
+    Old Capacity: The original capacity column from an individual load using echem_file_loader of each file
+    Capacity: The new calculated capacity column from the current and time columns - this is more robust if cycles are spread across multiple files
     Args:
         filepaths (list): List of file paths to the electrochemical files.
         mass (float, optional): The mass of the cell. Defaults to None.
@@ -193,21 +197,37 @@ def multi_echem_file_loader(filepaths, mass=None, area=None):
     # Adding a full cycle column
     combined_df['full cycle'] = (combined_df['half cycle']/2).apply(np.ceil)
 
+    # Tidying up Capacity columns using current and time if available using the same method as the Ivium cycler
+    # Fixes issues with mid cycle file merges, feels like a janky solution but should work if Time and Current are accuractely captured (time must be relative to the start of the experiment)
+    if 'Time' in combined_df.columns and 'Current' in combined_df.columns:
+        combined_df['dq'] = np.diff(combined_df['Time'], prepend=0)*combined_df['Current']
+        for half_cycle in combined_df['half cycle'].unique():
+            mask = combined_df['half cycle'] == half_cycle
+            idx = combined_df.index[mask]
+            combined_df.loc[idx, 'New Capacity'] = abs(combined_df.loc[idx, 'dq']).cumsum()/3600
 
-    # half_cycle_tracker = 0
-    # full_cycle_tracker = 0
-    # for df in df_list:
-    #     # Reset the half cycle and full cycle numbers
-    #     df['half cycle'] = df['half cycle'] + half_cycle_tracker
-    #     df['full cycle'] = df['full cycle'] + full_cycle_tracker
-    #     # Update the trackers
-    #     half_cycle_tracker = df['half cycle'].max()
-    #     full_cycle_tracker = df['full cycle'].max()
+        # Tolerance settings
+        rtol = 1e-5  # relative tolerance
+        atol = 1e-8  # absolute tolerance
 
-    # # Concatenate all the dataframes together
-    # df = pd.concat(df_list, ignore_index=True)
-    # # Reset the index
-    # df.reset_index(drop=True, inplace=True)
+        # Compare columns
+        combined_df['equal'] = np.isclose(combined_df['Capacity'], combined_df['New Capacity'], rtol=rtol, atol=atol)
+        # Check if any values are not equal
+        if not combined_df['equal'].all():
+            combined_df.rename(columns = {'Capacity':'Old Capacity'}, inplace = True)
+            combined_df.rename(columns = {'New Capacity':'Capacity'}, inplace = True)
+            # If the new capacity column is not equal to the original capacity column, then we need to replace it
+            warnings.warn("Capacity columns are not equal, replacing with new capacity column calculated from current and time columns and renaming the old capacity column to Old Capacity")
+
+    # Adding specific capacity and current density columns if mass and area are provided
+    if mass:
+        combined_df['Specific Capacity'] = combined_df['Capacity']/mass
+    if area:
+        combined_df['Specific Capacity (Area)'] = combined_df['Capacity']/area
+    if mass and 'Current' in combined_df.columns:
+        combined_df['Specific Current'] = df['Current']/mass
+    if area and 'Current' in combined_df.columns:
+        combined_df['Current Density'] = combined_df['Current']/area
     return combined_df
 
 
