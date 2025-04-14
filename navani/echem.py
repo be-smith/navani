@@ -176,6 +176,7 @@ def multi_echem_file_loader(filepaths, mass=None, area=None):
     - Start at time zero (relative time),
     - Continue increasing in time across files (absolute time),
     - Otherwise, raises a warning and defaults to using the original capacity values.
+    If no time column is found, a warning is raised and the original capacity column is used, and time is treated as an index.
 
     When time is valid across files, a new 'Capacity' column is calculated from current and time data
     using the trapezoidal method (equivalent to Ivium’s cycler logic). The original capacity column is preserved
@@ -199,6 +200,13 @@ def multi_echem_file_loader(filepaths, mass=None, area=None):
     final_time = 0
     for i, filepath in enumerate(filepaths):
         df = echem_file_loader(filepath, mass=mass, area=area)
+        df['Source File'] = os.path.basename(filepath)
+        # Check if the time column is present
+        if 'Time' not in df.columns:
+            warnings.warn("Time column not found, using the original capacity column")
+            time_warning_flag = True
+            # If the time column is not present, we can't do anything with it
+            df['Time'] = np.arange(len(df))
         if i == 0:
             final_time = df['Time'].iloc[-1]
         else:
@@ -226,6 +234,7 @@ def multi_echem_file_loader(filepaths, mass=None, area=None):
     combined_df['full cycle'] = (combined_df['half cycle']/2).apply(np.ceil)
 
     # Tidying up Capacity columns using current and time if available using the same method as the Ivium cycler
+    # Testing on Biologic data this maps exactly to the Q charge/discharge/mA.h column
     # Fixes issues with mid cycle file merges, feels like a janky solution but should work if Time and Current are accuractely captured (time must be relative to the start of the experiment)
     if 'Time' in combined_df.columns and 'Current' in combined_df.columns and (not time_warning_flag):
         combined_df['dq'] = np.diff(combined_df['Time'], prepend=0)*combined_df['Current']
@@ -308,8 +317,16 @@ def arbin_res(df):
             df.loc[cycle_idx, 'Capacity'] = df.loc[cycle_idx, 'Capacity'] - initial_capacity
         else:
             pass
-
-    return df
+    
+    if "Test_Time(s)" in df.columns:
+        df["Time"] = df["Test_Time(s)"]
+        return df
+    elif "Test_Time" in df.columns:
+        df["Time"] = df["Test_Time"]
+        return df
+    else:
+        warnings.warn("Time column not found")
+        return df
 
 
 def biologic_processing(df):
@@ -437,6 +454,7 @@ def ivium_processing(df):
         df.loc[idx, 'Capacity'] = abs(df.loc[idx, 'dq']).cumsum()/3600
     df['Voltage'] = df['E /V']
     df['Time'] = df['time /s']
+    df['Current'] = df['I /mA']
     return df
 
 def new_land_processing(df):
@@ -475,8 +493,16 @@ def new_land_processing(df):
     df['half cycle'] = (df['cycle change'] == True).cumsum()
     df['Voltage'] = df['Voltage/V']
     df['Capacity'] = df['Capacity/mAh']
-    df['Time'] = df['time /s']
-    return df
+    df['Current'] = df['Current/mA']
+    if 'time /s' in df.columns:
+        df['Time'] = df['time /s']
+        return df
+    elif 'TestTime/h' in df.columns:
+        df['Time'] = df['TestTime/h'] * 3600
+        return df
+    else:
+        warnings.warn("Time column not found")
+        return df
 
 def old_land_processing(df):
     """
@@ -509,7 +535,16 @@ def old_land_processing(df):
     df['half cycle'] = (df['cycle change'] == True).cumsum()
     df['Voltage'] = df['Voltage/V']
     df['Capacity'] = df['Capacity/mAh']
-    return df
+    df['Current'] = df['Current/mA']
+    if 'time /s' in df.columns:
+        df['Time'] = df['time /s']
+        return df
+    elif 'TestTime/h' in df.columns:
+        df['Time'] = df['TestTime/h'] * 3600
+        return df
+    else:
+        warnings.warn("Time column not found")
+        return df
 
 def arbin_excel(df):
     """
@@ -595,6 +630,8 @@ def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh
     not_rest_idx = df[df['state'] != 'R'].index
     df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
     df['half cycle'] = (df['cycle change'] == True).cumsum()
+    if 'Time' not in df.columns:
+        warnings.warn("Time column not found")
     return df
 
 
