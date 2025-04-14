@@ -12,7 +12,7 @@ from typing import Union
 from pathlib import Path
 
 # Different cyclers name their columns slightly differently 
-# These dictionaries are guides for the main things you want to plot and what they are called
+# These dictionaries are guides for the main things you want to plot and what they are called and what they are called
 res_col_dict = {'Voltage': 'Voltage',
                 'Capacity': 'Capacity'}
 
@@ -26,7 +26,7 @@ def echem_file_loader(filepath, mass=None, area=None):
     """
     Loads a variety of electrochemical filetypes and tries to construct the most useful measurements in a
     consistent way, with consistent column labels. Outputs a dataframe with the original columns, and these constructed columns:
-
+    
     - "state": R for rest, 0 for discharge, 1 for charge (defined by the current direction +ve or -ve)
     - "half cycle": Counts the half cycles, rests are not included as a half cycle
     - "full cycle": Counts the full cycles, rests are not included as a full cycle
@@ -166,7 +166,7 @@ def echem_file_loader(filepath, mass=None, area=None):
 
     return df
 
-def arbin_res(df):
+def arbin_res(df) -> pd.DataFrame:
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the galvani res2sqlite for Arbin .res files.
 
@@ -174,7 +174,7 @@ def arbin_res(df):
         df (pandas.DataFrame): The input DataFrame containing the data.
 
     Returns:
-        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+        df (pandas.DataFrame): The processed DataFrame with added columns for capacity and cycle changes.
     """
     df.set_index('Data_Point', inplace=True)
     df.sort_index(inplace=True)
@@ -202,7 +202,7 @@ def arbin_res(df):
     if 'Discharge_Capacity' in df.columns:
         df['Capacity'] = df['Discharge_Capacity'] + df['Charge_Capacity']
     elif 'Discharge_Capacity(Ah)' in df.columns:
-        df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] * 1000
+        df['Capacity'] = (df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']) * 1000
     else:
         raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
 

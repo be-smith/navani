@@ -59,7 +59,7 @@ def test_xlsx_reader_and_dqdv():
 
     np.testing.assert_almost_equal(np.mean(voltage), 1.33431, decimal=3)
     np.testing.assert_almost_equal(np.mean(capacity), 0.214, decimal=3) # 0.0000
-    np.testing.assert_almost_equal(np.mean(dqdv), -2.258, decimal=3)
+    np.testing.assert_almost_equal(np.mean(dqdv), -2.258, decimal=3) # -0.002
 
     summary_df = ec.cycle_summary(df)
     summary_cols = (
