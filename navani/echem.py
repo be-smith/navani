@@ -166,6 +166,51 @@ def echem_file_loader(filepath, mass=None, area=None):
 
     return df
 
+def multi_echem_file_loader(filepaths, mass=None, area=None):
+    """
+    Loads multiple electrochemical files and concatenates them into a single dataframe.
+    The files can be of different types, and the function will process them accordingly.
+    Args:
+        filepaths (list): List of file paths to the electrochemical files.
+        mass (float, optional): The mass of the cell. Defaults to None.
+        area (float, optional): The area of the cell. Defaults to None.
+    Returns:
+        pandas.DataFrame: A dataframe with the original columns and the constructed columns from all files.
+    """
+    df_list = []
+    for filepath in filepaths:
+        df = echem_file_loader(filepath, mass=mass, area=area)
+        df_list.append(df)
+
+    combined_df = pd.concat(df_list, ignore_index=True)
+    # Reset the index
+    combined_df.reset_index(drop=True, inplace=True)
+    not_rest_idx = combined_df[combined_df['state'] != 'R'].index
+    combined_df['cycle change'] = False
+    # If the state changes, then it's a half cycle change
+    combined_df.loc[not_rest_idx, 'cycle change'] = combined_df.loc[not_rest_idx, 'state'].ne(combined_df.loc[not_rest_idx, 'state'].shift())
+    combined_df['half cycle'] = (combined_df['cycle change'] == True).cumsum()
+    # Adding a full cycle column
+    combined_df['full cycle'] = (combined_df['half cycle']/2).apply(np.ceil)
+
+
+    # half_cycle_tracker = 0
+    # full_cycle_tracker = 0
+    # for df in df_list:
+    #     # Reset the half cycle and full cycle numbers
+    #     df['half cycle'] = df['half cycle'] + half_cycle_tracker
+    #     df['full cycle'] = df['full cycle'] + full_cycle_tracker
+    #     # Update the trackers
+    #     half_cycle_tracker = df['half cycle'].max()
+    #     full_cycle_tracker = df['full cycle'].max()
+
+    # # Concatenate all the dataframes together
+    # df = pd.concat(df_list, ignore_index=True)
+    # # Reset the index
+    # df.reset_index(drop=True, inplace=True)
+    return combined_df
+
+
 def arbin_res(df):
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the galvani res2sqlite for Arbin .res files.
@@ -202,7 +247,7 @@ def arbin_res(df):
     if 'Discharge_Capacity' in df.columns:
         df['Capacity'] = df['Discharge_Capacity'] + df['Charge_Capacity']
     elif 'Discharge_Capacity(Ah)' in df.columns:
-        df['Capacity'] = df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)'] * 1000
+        df['Capacity'] = (df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']) * 1000
     else:
         raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
 
