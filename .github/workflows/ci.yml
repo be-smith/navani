@@ -9,7 +9,7 @@ jobs:
 
   pytest:
     name: Run Python unit tests
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
@@ -31,14 +31,15 @@ jobs:
           sudo apt install -y mdbtools
 
       - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
-
-      - name: Add uv to path
-        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        uses: astral-sh/setup-uv@v5
+        with:
+          # Install a specific version of uv.
+          version: "0.6.10"
+          enable-cache: true
 
       - name: Install latest compatible versions of immediate dependencies
         run: |
-          uv pip install -e .[dev]
+          uv sync --locked --all-extras --dev
 
       - name: Run all tests
         run: |
