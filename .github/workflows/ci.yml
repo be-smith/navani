@@ -18,7 +18,6 @@ jobs:
         python-version: ['3.9', '3.10', '3.11', '3.12']
 
     steps:
-      - name: Checkout code
       - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -43,4 +42,4 @@ jobs:
 
       - name: Run all tests
         run: |
-          pytest -rs -vvv ./tests
+          uv run pytest -rs -vvv ./tests
