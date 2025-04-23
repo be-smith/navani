@@ -130,4 +130,5 @@ dmypy.json
 .DS_Store
 
 # VS Code settings
-.vscode/
+.vscode/settings.json
+navani_testing.code-workspace

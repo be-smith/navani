@@ -1,0 +1,41 @@
+[project]
+name = "navani"
+version = "0.1.5"
+description = "Package for processing and plotting echem data from cyclers"
+authors = [
+    { name = "Ben Smith", email = "ben.ed.smith2@gmail.com" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    "numpy ~= 1.26, <2",
+    "pandas ~= 2.2, <3",
+    "scipy",
+    "galvani >= 0.4.1",
+    "matplotlib",
+    "openpyxl",
+    "NewareNDA >= 2024.8.1",
+    "requests"
+]
+
+[project.urls]
+Homepage = "https://github.com/be-smith/navani"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "pytest",
+    "pytest-dotenv",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
