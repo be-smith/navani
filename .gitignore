@@ -128,3 +128,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .DS_Store
+
+# VS Code settings
+.vscode/settings.json
+navani_testing.code-workspace
