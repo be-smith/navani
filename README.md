@@ -49,7 +49,7 @@ df = ec.echem_file_loader(filepath)
 fig, ax = ec.charge_discharge_plot(df, 1)
 ```
 
-<img src="Docs/Example_figures/Graphite_charge_discharge_plot.png" width="50%" height="50%">
+<img src="docs/Example_figures/Graphite_charge_discharge_plot.png" width="50%" height="50%">
 
 ```python
 for cycle in [1, 2]:
@@ -68,7 +68,7 @@ plt.xlabel('Voltage / V')
 plt.ylabel('dQ/dV / mAhV$^{-1}$')
 ```
 
-<img src="Docs/Example_figures/Graphite_dqdv.png" width="50%" height="50%">
+<img src="docs/Example_figures/Graphite_dqdv.png" width="50%" height="50%">
 
 ```python
 fig, ax = ec.multi_dqdv_plot(df, cycles=cycles,
@@ -80,4 +80,4 @@ fig, ax = ec.multi_dqdv_plot(df, cycles=cycles,
                     polyorder_2=5,
                     final_smooth=True)
 ```
-<img src="Docs/Example_figures/Si_dQdV.png" width="50%" height="50%">
+<img src="docs/Example_figures/Si_dQdV.png" width="50%" height="50%">
