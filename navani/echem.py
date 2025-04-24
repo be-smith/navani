@@ -747,23 +747,18 @@ def charge_discharge_plot(df: pd.DataFrame, full_cycle: int, colormap: str = Non
     return fig, ax
 
 
-def multi_cycle_plot(df: pd.DataFrame, cycles: ArrayLike, colormap: str = 'viridis'):
+def multi_cycle_plot(df: pd.DataFrame, cycles: ArrayLike, colormap: str = 'viridis') -> Tuple[plt.Figure, plt.Axes]:
     """
-    Function for plotting continuously coloured cycles (useful for large numbers). The cycle numbers correspond to half cycles.
-
-    Parameters:
-    - df: DataFrame
-        The input DataFrame containing the data to be plotted.
-    - cycles: list or array-like
-        A list of cycle numbers to be plotted, these are half cycles.
-    - colormap: str, optional
-        The name of the colormap to be used for coloring the cycles. Default is 'viridis'.
+    Function for plotting continuously coloured cycles (useful for large numbers of cycles). The cycle numbers correspond to half cycles.
+    
+    Args:
+        df (DataFrame): The input dataframe containing the data to be plotted.
+        cycles (list or array-like): The half cycle numbers to be plotted based on the half cycle column (charge and discharge separated).
+        colormap (str, optional): The colormap to use for the plot. Default is 'viridis'.
 
     Returns:
-    - fig: matplotlib.figure.Figure
-        The generated figure object.
-    - ax: matplotlib.axes.Axes
-        The generated axes object.
+        fig (Figure): The matplotlib Figure object.
+        ax (Axes): The matplotlib Axes object.
     """
 
     import matplotlib.pyplot as plt
@@ -787,35 +782,51 @@ def multi_cycle_plot(df: pd.DataFrame, cycles: ArrayLike, colormap: str = 'virid
     return fig, ax
 
 
-def multi_dqdv_plot(df, cycles, colormap='viridis', 
-    capacity_label='Capacity', 
-    voltage_label='Voltage',
-    polynomial_spline=3, s_spline=1e-5,
-    polyorder_1 = 5, window_size_1=101,
-    polyorder_2 = 5, window_size_2=1001,
-    final_smooth=True):
+def multi_dqdv_plot(df: pd.DataFrame, 
+                    cycles: ArrayLike, 
+                    colormap: str = 'viridis', 
+                    capacity_label: str = 'Capacity', 
+                    voltage_label: str = 'Voltage',
+                    polynomial_spline: int = 3, 
+                    s_spline: float = 1e-5,
+                    polyorder_1: int = 5, 
+                    window_size_1: int = 101,
+                    polyorder_2: int = 5, 
+                    window_size_2: int = 1001,
+                    final_smooth: bool = True
+                    ) -> Tuple[plt.Figure, plt.Axes]:
     """
-    Plot multiple dQ/dV cycles on the same plot with a colormap. Cycles correspond to half cycles. 
-    Uses the internal dqdv_single_cycle function to calculate the dQ/dV curves.
+    Plot multiple dQ/dV cycles on the same plot using a colormap.
 
-    Parameters:
-    - df: DataFrame containing the data.
-    - cycles: List or array-like object of cycle numbers (half cycles) to plot.
-    - colormap: Name of the colormap to use (default: 'viridis').
-    - capacity_label: Label of the capacity column in the DataFrame (default: 'Capacity').
-    - voltage_label: Label of the voltage column in the DataFrame (default: 'Voltage').
-    - polynomial_spline (int, optional): Order of the spline interpolation for the capacity-voltage curve. Defaults to 3. Best results use odd numbers.
-    - s_spline (float, optional): Smoothing factor for the spline interpolation. Defaults to 1e-5.
-    - polyorder_1 (int, optional): Order of the polynomial for the first smoothing filter (Before spline fitting). Defaults to 5. Best results use odd numbers.
-    - window_size_1 (int, optional): Size of the window for the first smoothing filter. (Before spline fitting). Defaults to 101. Must be odd.
-    - polyorder_2 (int, optional): Order of the polynomial for the second optional smoothing filter. Defaults to 5. (After spline fitting and differentiation). Best results use odd numbers.
-    - window_size_2 (int, optional): Size of the window for the second optional smoothing filter. Defaults to 1001. (After spline fitting and differentiation). Must be odd.
-    - final_smooth (bool, optional): Whether to apply final smoothing to the dq/dv curve. Defaults to True.
+    Each cycle corresponds to a half cycle. Internally, this function uses
+    `dqdv_single_cycle` to calculate the dQ/dV curves.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing the cycling data.
+        cycles (ArrayLike): List or array-like of cycle numbers (half cycles) to plot.
+        colormap (str, optional): Name of the colormap to use. Defaults to `'viridis'`.
+        capacity_label (str, optional): Label of the capacity column. Defaults to `'Capacity'`.
+        voltage_label (str, optional): Label of the voltage column. Defaults to `'Voltage'`.
+        polynomial_spline (int, optional): Order of the spline interpolation for the 
+            capacity-voltage curve. Best results with odd numbers. Defaults to `3`.
+        s_spline (float, optional): Smoothing factor for the spline interpolation.
+            Defaults to `1e-5`.
+        polyorder_1 (int, optional): Order of the polynomial for the first smoothing 
+            filter (before spline fitting). Best results with odd numbers. Defaults to `5`.
+        window_size_1 (int, optional): Window size for the first smoothing filter 
+            (before spline fitting). Must be odd. Defaults to `101`.
+        polyorder_2 (int, optional): Order of the polynomial for the second optional 
+            smoothing filter (after spline fitting and differentiation). Best results 
+            with odd numbers. Defaults to `5`.
+        window_size_2 (int, optional): Window size for the second optional smoothing 
+            filter (after spline fitting and differentiation). Must be odd. Defaults to `1001`.
+        final_smooth (bool, optional): Whether to apply final smoothing to the dQ/dV curve. 
+            Defaults to `True`.
 
     Returns:
-    - fig: The matplotlib figure object.
-    - ax: The matplotlib axes object.
-
+        Tuple[plt.Figure, plt.Axes]: 
+            - `fig`: The matplotlib figure object.
+            - `ax`: The matplotlib axes object.
     """
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
