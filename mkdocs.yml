@@ -1,4 +1,4 @@
-site_name: My Project Documentation
+site_name: Navani
 theme:
   name: readthedocs  # Optional: better-looking theme
 plugins:
