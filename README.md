@@ -3,6 +3,8 @@
 Module for processing and plotting electrochemical data from battery cyclers, combining other open source libraries to create pandas dataframes with a normalized schema across multiple cycler brands.
 Contains functions to compute dQ/dV and dV/dQ.
 
+Full documentation can be found [here](https://be-smith.github.io/navani/).
+
 Currently supports:
 
 - BioLogic MPR (`.mpr`)
