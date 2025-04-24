@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="description" content="None" />
+      <link rel="shortcut icon" href="img/favicon.ico" />
+    <title>Navani</title>
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="stylesheet" href="css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="assets/_mkdocstrings.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "navani";
+        var mkdocs_page_input_path = "index.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="." class="icon icon-home"> Navani
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="./search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">navani</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#usage">Usage</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="api/">API Reference</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href=".">Navani</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">navani</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="navani">navani</h1>
+<p>Navani is a Python module for processing and plotting electrochemical data from battery cyclers, combining other open source libraries to create pandas dataframes with a normalized schema across multiple cycler brands. It is intended to be easy to use for those unfamiliar with programming.
+Contains functions to compute dQ/dV and dV/dQ.</p>
+<p>Currently supports:</p>
+<ul>
+<li>BioLogic MPR (<code>.mpr</code>)</li>
+<li>Arbin res files (<code>.res</code>)</li>
+<li>Simple <code>.txt</code> and Excel <code>.xls</code>/<code>.xlsx</code> formats produced by e.g., Arbin, Ivium and Lanhe/Lande</li>
+<li>Neware NDA and NDAX (<code>.nda</code>, <code>.ndax</code>)</li>
+</ul>
+<p>The main dependencies are :</p>
+<ul>
+<li>pandas</li>
+<li><a href="https://github.com/echemdata/galvani">galvani</a> (BioLogic MPR) </li>
+<li><a href="https://github.com/mdbtools/mdbtools">mdbtools</a> (for reading Arbin's .res files with galvani).</li>
+<li><a href="https://github.com/Solid-Energy-Systems/NewareNDA">NewareNDA</a> (for reading Neware's NDA and NDAx formats).</li>
+</ul>
+<h2 id="installation">Installation</h2>
+<p>You will need Python 3.9 or higher to use Navani.</p>
+<p>It is now advised to install navani using <a href="https://docs.astral.sh/uv/">uv</a>, to manage dependencies.</p>
+<p>To install Navani and its dependencies clone this repository and use uv to setup a virtual environment with the dependecies:</p>
+<pre><code class="language-shell">git clone git@github.com/be-smith/navani
+cd navani
+uv venv
+uv sync
+</code></pre>
+<p>You should now have an environment you can activate with all the required dependencies (except mdbtools, which is covered later).</p>
+<p>To activate this environment simply run from the navani folder:</p>
+<pre><code class="language-shell">source .venv/bin/activate
+</code></pre>
+<p>If you would like to contribute to navani it is recommended to install the dev dependencies, this can be done simply by:</p>
+<pre><code class="language-shell">uv sync --all-extras --dev
+</code></pre>
+<p>If don't want to use uv it is still stronly recommended to use a fresh Python environment to install navani, using e.g., <code>conda create</code> or <code>python -m venv &lt;chosen directory</code>.
+To install navani, either clone this repository and install from your local copy:</p>
+<pre><code class="language-shell">git clone git@github.com/be-smith/navani
+cd navani
+pip install .
+</code></pre>
+<p>or install directly from GitHub with <code>pip</code>:</p>
+<pre><code class="language-shell">pip install git+https://github.com/be-smith/navani
+</code></pre>
+<p>The additional non-Python mdbtools dependency to <code>galvani</code> that is required to read Arbin's <code>.res</code> format can be installed on Ubuntu via <code>sudo apt install mdbtools</code>, with similar instructions available for other Linux distributions and macOS <a href="https://github.com/mdbtools/mdbtools">here</a>.</p>
+<h2 id="usage">Usage</h2>
+<p>The main entry point to navani is the <code>navani.echem.echem_file_loader</code> function, which will do file type detection and return a pandas dataframe.
+Many different plot types are then available, as shown below:</p>
+<pre><code class="language-python">import pandas as pd
+import navani.echem as ec
+
+df = ec.echem_file_loader(filepath)
+fig, ax = ec.charge_discharge_plot(df, 1)
+</code></pre>
+<p><img src="Example_figures/Graphite_charge_discharge_plot.png" alt="Graphite charge discharge plot example" width="50%" height="50%"></p>
+<p>Also included are functions for extracting dQ/dV from the data:</p>
+<pre><code class="language-python">for cycle in [1, 2]:
+    mask = df['half cycle'] == cycle
+    voltage, dqdv, capacity = ec.dqdv_single_cycle(df['Capacity'][mask], df['Voltage'][mask],
+                                                   window_size_1=51,
+                                                    polyorder_1=5,
+                                                    s_spline=0.0,
+                                                    window_size_2=51,
+                                                    polyorder_2=5,
+                                                    final_smooth=True)
+    plt.plot(voltage, dqdv)
+
+plt.xlim(0, 0.5)
+plt.xlabel('Voltage / V')
+plt.ylabel('dQ/dV / mAhV$^{-1}$')
+</code></pre>
+<p><img src="Example_figures/Graphite_dqdv.png" alt="Graphite dQ/dV plot example" width="50%" height="50%"></p>
+<p>And easily plotting multiple cycles:</p>
+<pre><code class="language-python">fig, ax = ec.multi_dqdv_plot(df, cycles=cycles,
+                    colormap='plasma',
+                    window_size_1=51,
+                    polyorder_1=5,
+                    s_spline=1e-7,
+                    window_size_2=251,
+                    polyorder_2=5,
+                    final_smooth=True)
+</code></pre>
+<p><img src="Example_figures/Si_dQdV.png" alt="Si dQ/dV plot example" width="50%" height="50%"></p>
+<p>Simple jupyter notebooks and Colab notebooks can be found <a href="https://github.com/be-smith/navani/blob/main/Simple%20example%20jupyter.ipynb">here</a> for Jupyter and <a href="https://github.com/be-smith/navani/blob/main/Simple_examples_colab.ipynb">here</a> for Colab.</p>
+<p>Whilst a more detailed Colab notebook can be found <a href="https://github.com/be-smith/navani/blob/main/Detailed_colab_tutorial.ipynb">here</a>.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="api/" class="btn btn-neutral float-right" title="API Reference">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+    
+      <span><a href="api/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = ".";</script>
+    <script src="js/theme_extra.js"></script>
+    <script src="js/theme.js"></script>
+      <script src="search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
+
+<!--
+MkDocs version : 1.6.1
+Build Date UTC : 2025-04-24 13:44:47.422007+00:00
+-->
