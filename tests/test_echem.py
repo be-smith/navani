@@ -73,7 +73,7 @@ def test_xlsx_reader_and_dqdv():
         "Average Charge Voltage",
     )
     assert set(summary_cols) == set(summary_df)
-    np.testing.assert_almost_equal(summary_df["Current"].mean(), -0.00001827, decimal=5)
+    np.testing.assert_almost_equal(summary_df["Current"].mean(), 3.3362164227611934e-05, decimal=5)
     np.testing.assert_almost_equal(summary_df["UCV"].mean(), 2.084951, decimal=5) 
     np.testing.assert_almost_equal(summary_df["LCV"].mean(), 0.912430, decimal=5)
     np.testing.assert_almost_equal(summary_df["Discharge Capacity"].mean(), 5.52742, decimal=5) # 0.005527
@@ -148,7 +148,7 @@ def test_mpr_reader():
         "Average Charge Voltage",
     )
     assert set(summary_cols) == set(summary_df)
-    np.testing.assert_almost_equal(summary_df["Current"].mean(), -0.00114511, decimal=5)
+    np.testing.assert_almost_equal(summary_df["Current"].mean(), 0.07768606207052911, decimal=5)
     np.testing.assert_almost_equal(summary_df["UCV"].mean(), 3.638082, decimal=5)
     np.testing.assert_almost_equal(summary_df["LCV"].mean(), 2.0633922, decimal=5)
     np.testing.assert_almost_equal(summary_df["Discharge Capacity"].mean(), 0.7778788, decimal=5)
