@@ -4,13 +4,14 @@ from galvani import res2sqlite as r2s
 import pandas as pd
 import numpy as np
 import tempfile
-from scipy.signal import savgol_filter
 import sqlite3
 import os
 import matplotlib.pyplot as plt
-from typing import Union
+from typing import Union, Tuple
 from pathlib import Path
+from numpy.typing import ArrayLike, NDArray
 import warnings
+
 
 # Different cyclers name their columns slightly differently 
 # These dictionaries are guides for the main things you want to plot and what they are called
@@ -23,33 +24,41 @@ mpr_col_dict = {'Voltage': 'Ewe/V',
 current_labels = ['Current', 'Current(A)', 'I /mA', 'Current/mA', 'I/mA', '<I>/mA']
 
 
-def echem_file_loader(filepath, mass=None, area=None):
+def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: float = None) -> pd.DataFrame:
     """
-    Loads a variety of electrochemical filetypes and tries to construct the most useful measurements in a
-    consistent way, with consistent column labels. Outputs a dataframe with the original columns, and these constructed columns:
+    Loads a variety of electrochemical filetypes and constructs useful measurements
+    with consistent column labels. Outputs a DataFrame with both original and
+    constructed columns for further electrochemical analysis.
 
-    - "state": R for rest, 0 for discharge, 1 for charge (defined by the current direction +ve or -ve)
-    - "half cycle": Counts the half cycles, rests are not included as a half cycle
-    - "full cycle": Counts the full cycles, rests are not included as a full cycle
-    - "cycle change": Boolean column that is True when the state changes
-    - "Capacity": The capacity of the cell, each half cycle it resets to 0 - In general this will be in mAh - however it depends what unit the original file is in - Arbin Ah automatically converted to mAh
-    - "Voltage": The voltage of the cell
-    - "Current": The current of the cell - In general this will be in mA - however it depends what unit the original file is in
-    - "Specific Capacity": The capacity of the cell divided by the mass of the cell if mass provided
-    - "Specific Capacity (Area)": The capacity of the cell divided by the area of the cell if area provided
-    - "Current Density": The current of the cell divided by the area of the cell is area provided
-    - "Specific Current": The current of the cell divided by the mass of the cell
-    
-    From these measurements, everything you want to know about the electrochemistry can be calculated.
-    
-    Parameters:
-        filepath (str): The path to the electrochemical file.
+    Constructed Columns:
+        - **Time**: The time of the measurement, normally in seconds.
+        - **state**: `'R'` for rest, `1` for discharge, `0` for charge (defined by current direction: positive (0) or negative (1)).
+        - **half cycle**: Counts the number of half cycles (rests are not included).
+        - **full cycle**: Counts the number of full cycles (rests are not included).
+        - **cycle change**: Boolean column that is `True` when the state changes.
+        - **Capacity**: Capacity of the cell. Resets to 0 each half cycle. Usually in mAh; for Arbin files, Ah is auto-converted to mAh.
+        - **Voltage**: The voltage of the cell.
+        - **Current**: The current of the cell. Usually in mA; depends on original file units.
+        - **Specific Capacity**: Capacity divided by mass (if mass is provided).
+        - **Specific Capacity (Area)**: Capacity divided by area (if area is provided).
+        - **Current Density**: Current divided by area (if area is provided).
+        - **Specific Current**: Current divided by mass (if mass is provided).
+
+    From these measurements, most key electrochemical performance metrics can be calculated.
+
+    Args:
+        filepath (Union[str, Path]): The path to the electrochemical file.
         mass (float, optional): The mass of the cell. Defaults to None.
         area (float, optional): The area of the cell. Defaults to None.
-    
+
     Returns:
-        pandas.DataFrame: A dataframe with the original columns and the constructed columns.
-    """
+        pandas.DataFrame: A DataFrame with the original and constructed columns.
+
+    Raises:
+        ValueError: If the filetype is not recognized or expected columns are missing.
+        RuntimeError: If sheet names do not match known Arbin or Landt Excel formats, or if the file extension is unsupported.
+"""
+
     extension = os.path.splitext(filepath)[-1].lower()
     # Biologic file
     if extension == '.mpr':
@@ -169,6 +178,7 @@ def echem_file_loader(filepath, mass=None, area=None):
 
     return df
 
+  
 def multi_echem_file_loader(filepaths, mass=None, area=None):
     """
     Loads and concatenates multiple electrochemical experiment files into a single DataFrame.
@@ -270,7 +280,8 @@ def multi_echem_file_loader(filepaths, mass=None, area=None):
     return combined_df
 
 
-def arbin_res(df):
+def arbin_res(df: pd.DataFrame) -> pd.DataFrame:
+
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the galvani res2sqlite for Arbin .res files.
 
@@ -279,12 +290,16 @@ def arbin_res(df):
 
     Returns:
         pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+
+    Raises:
+        KeyError: If the expected columns for capacity are not found in the DataFrame.
+        ValueError: If an unexpected value is found in the current column.
     """
     df.set_index('Data_Point', inplace=True)
     df.sort_index(inplace=True)
 
     # Deciding on charge and discharge and rest based on current direction
-    def arbin_state(x):
+    def arbin_state(x: float):
         if x > 0:
             return 0
         elif x < 0:
@@ -331,7 +346,7 @@ def arbin_res(df):
         return df
 
 
-def biologic_processing(df):
+def biologic_processing(df: pd.DataFrame) -> pd.DataFrame:
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the galvani MPRfile for Biologic .mpr files.
 
@@ -340,10 +355,13 @@ def biologic_processing(df):
 
     Returns:
         pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+
+    Raises:
+        ValueError: If an unexpected value is found in the current column.
     """
     # Dealing with the different column layouts for biologic files
 
-    def bio_state(x):
+    def bio_state(x: float):
         if x > 0:
             return 0
         elif x < 0:
@@ -428,17 +446,27 @@ def biologic_processing(df):
         df.rename(columns = {'Ewe/V':'Voltage'}, inplace = True)
         return df
 
-def ivium_processing(df):
+def ivium_processing(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the Ivium .txt files.
-    For Ivium files the cycler records the bare minimum (Current, Voltage, Time) and everything else is calculated from that.
+    Processes a DataFrame from Ivium `.txt` files to calculate capacity and detect cycle changes. Note the Ivium file has already been read as a DataFrame in echem_file_loader.
+
+    Ivium files typically contain minimal raw measurements: **Current** (in mA), **Voltage** (in V), and **Time** (in seconds).
+    This function calculates additional metrics based on those values.
+
+    Constructed Columns:
+        - **Capacity**: Calculated from the integration of current over time (in mAh).
+        - **state**: Charging (`0`), discharging (`1`), based on current direction.
+        - **half cycle**: Index of the half cycle (ignores rest periods).
+        - **full cycle**: Index of the full cycle (ignores rest periods).
+        - **cycle change**: Boolean indicating where a new charge/discharge phase begins.
 
     Args:
-        df (pandas.DataFrame): The input DataFrame containing the data.
+        df (pandas.DataFrame): The input DataFrame containing columns for Current, Voltage, and Time.
 
     Returns:
-        pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+        pandas.DataFrame: The processed DataFrame with calculated columns for capacity and cycle tracking.
     """
+
 
     df['dq'] = np.diff(df['time /s'], prepend=0)*df['I /mA']
     df['Capacity'] = df['dq'].cumsum()/3600
@@ -459,7 +487,7 @@ def ivium_processing(df):
     df['Current'] = df['I /mA']
     return df
 
-def new_land_processing(df):
+def new_land_processing(df: pd.DataFrame) -> pd.DataFrame:
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the Landdt .xlsx files.
     Landdt has many different ways of exporting the data - so this is for one specific way of exporting the data.
@@ -469,6 +497,9 @@ def new_land_processing(df):
 
     Returns:
         pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+
+    Raises:
+        ValueError: If an unexpected value is found in the current column.
     """
     # Remove half cycle == 0 for initial resting
     if 'Voltage/V' not in df.columns:
@@ -477,7 +508,7 @@ def new_land_processing(df):
     df = df[df['Current/mA'].apply(type) != str]
     df = df[pd.notna(df['Current/mA'])]
 
-    def land_state(x):
+    def land_state(x: float) -> Union[int, str]:
         if x > 0:
             return 0
         elif x < 0:
@@ -506,7 +537,7 @@ def new_land_processing(df):
         warnings.warn("Time column not found")
         return df
 
-def old_land_processing(df):
+def old_land_processing(df: pd.DataFrame) -> pd.DataFrame:
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the Landdt .xlsx files.
     Landdt has many different ways of exporting the data - so this is for one specific way of exporting the data.
@@ -516,11 +547,14 @@ def old_land_processing(df):
 
     Returns:
         pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+
+    Raises:
+        ValueError: If an unexpected value is found in the current column.
     """
     df = df[df['Current/mA'].apply(type) != str]
     df = df[pd.notna(df['Current/mA'])]
 
-    def land_state(x):
+    def land_state(x: float):
         if x > 0:
             return 0
         elif x < 0:
@@ -548,7 +582,7 @@ def old_land_processing(df):
         warnings.warn("Time column not found")
         return df
 
-def arbin_excel(df):
+def arbin_excel(df: pd.DataFrame) -> pd.DataFrame:
     """
     Process the given DataFrame to calculate capacity and cycle changes. Works for dataframes from the Arbin .xlsx files.
 
@@ -557,11 +591,14 @@ def arbin_excel(df):
 
     Returns:
         pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+    
+    Raises:
+        ValueError: If an unexpected value is found in the current column.
     """
 
     df.reset_index(inplace=True)
 
-    def arbin_state(x):
+    def arbin_state(x: float):
         if x > 0:
             return 0
         elif x < 0:
@@ -607,6 +644,9 @@ def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh
 
     Returns:
         pandas.DataFrame: The processed DataFrame with added columns for capacity and cycle changes.
+
+    Raises:
+        RuntimeError: If the expected capacity unit is not one of "mAh" or "Ah".
     """
     from NewareNDA.NewareNDA import read
     filename = str(filename)
@@ -625,8 +665,8 @@ def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh
     df["Current"] = 1000 * df["Current(mA)"]
     df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
     df.loc[df["Status"] == "Rest", "state"] = "R"
-    df.loc[df["Status"] == "CC_Chg", "state"] = 1
-    df.loc[df["Status"] == "CC_DChg", "state"] = 0
+    df.loc[df["Status"] == "CC_Chg", "state"] = 0
+    df.loc[df["Status"] == "CC_DChg", "state"] = 1
     df["half cycle"] = df["Cycle"]
     df['cycle change'] = False
     not_rest_idx = df[df['state'] != 'R'].index
@@ -637,14 +677,17 @@ def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh
     return df
 
 
-def dqdv_single_cycle(capacity, voltage, 
-                    polynomial_spline=3, s_spline=1e-5,
-                    polyorder_1 = 5, window_size_1=101,
-                    polyorder_2 = 5, window_size_2=1001,
-                    final_smooth=True):
+def dqdv_single_cycle(capacity: ArrayLike, voltage: ArrayLike, 
+                    polynomial_spline: int = 3, s_spline: float = 1e-5,
+                    polyorder_1: int = 5, window_size_1: int = 101,
+                    polyorder_2: int = 5, window_size_2: int = 1001,
+                    final_smooth: bool = True) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Calculate the derivative of capacity with respect to voltage (dq/dv) for a single cycle. Data is initially smoothed by a Savitzky-Golay filter and then interpolated and differentiated using a spline.
     Optionally the dq/dv curve can be smoothed again by another Savitzky-Golay filter.
+
+    This function assumes there are not significant turning points in the capacity-voltage curve. Any such turning points are assumes to be small and are treated as noise and will attempt to be smoothed out.
+    If such turning points are present, the dq/dv curve may not be accurate. The suggested strategy is to split your data into different sections on either side of the large turning points and applying this function to the different sections.
 
     Args:
         capacity (array-like): Array of capacity values.
@@ -664,6 +707,7 @@ def dqdv_single_cycle(capacity, voltage,
     import pandas as pd
     import numpy as np
     from scipy.interpolate import splrep, splev
+    from scipy.signal import savgol_filter
 
     df = pd.DataFrame({'Capacity': capacity, 'Voltage':voltage})
     unique_v = df.astype(float).groupby('Voltage').mean().index
@@ -685,30 +729,34 @@ def dqdv_single_cycle(capacity, voltage,
 """
 Processing values by cycle number
 """
-def cycle_summary(df, current_label=None):
+def cycle_summary(df: pd.DataFrame, current_label: str=None) -> pd.DataFrame:
     """
-    Computes summary statistics for each full cycle returning a new dataframe
-    with the following columns:
-    - 'Current': The average current for the cycle
-    - 'UCV': The upper cut-off voltage for the cycle
-    - 'LCV': The lower cut-off voltage for the cycle
-    - 'Discharge Capacity': The maximum discharge capacity for the cycle
-    - 'Charge Capacity': The maximum charge capacity for the cycle
-    - 'CE': The charge efficiency for the cycle (Discharge Capacity/Charge Capacity)
-    - 'Specific Discharge Capacity': The maximum specific discharge capacity for the cycle
-    - 'Specific Charge Capacity': The maximum specific charge capacity for the cycle
-    - 'Specific Discharge Capacity (Area)': The maximum specific discharge capacity for the cycle
-    - 'Specific Charge Capacity (Area)': The maximum specific charge capacity for the cycle
-    - 'Average Discharge Voltage': The average discharge voltage for the cycle
-    - 'Average Charge Voltage': The average charge voltage for the cycle
-    
-    Args:
-        df (pandas.DataFrame): The input DataFrame containing the data.
-        current_label (str, optional): The label of the current column. Defaults to None and compares to a list of known current labels.
+Computes summary statistics for each full cycle, returning a new DataFrame
+with various calculated values.
 
-    Returns:
-        pandas.DataFrame: The summary DataFrame with the calculated values.
-    """
+Columns:
+    - **Current**: The average current for the cycle, normally in units of mA.
+    - **UCV**: The upper cut-off voltage for the cycle.
+    - **LCV**: The lower cut-off voltage for the cycle.
+    - **Discharge Capacity**: The maximum discharge capacity for the cycle, normally in units of mAh.
+    - **Charge Capacity**: The maximum charge capacity for the cycle, , normally in units of mAh.
+    - **CE**: The charge efficiency for the cycle (Discharge Capacity / Charge Capacity).
+    - **Specific Discharge Capacity**: The maximum specific discharge capacity for the cycle, normally in units of mAh/g - depending on the units of mass supplied.
+    - **Specific Charge Capacity**: The maximum specific charge capacity for the cycle, normally in units of mAh/g - depending on the units of mass supplied.
+    - **Specific Discharge Capacity (Area)**: The maximum specific discharge capacity per area, normally in units of mAh/cm^2 - depending on the units of area supplied.
+    - **Specific Charge Capacity (Area)**: The maximum specific charge capacity per area, normally in units of mAh/cm^2 - depending on the units of area supplied.
+    - **Average Discharge Voltage**: The average discharge voltage for the cycle.
+    - **Average Charge Voltage**: The average charge voltage for the cycle.
+
+Args:
+    df (pandas.DataFrame): The input DataFrame containing the cycling data.
+    current_label (str, optional): The label of the current column. Defaults to None;
+        if None, it will be compared to a list of known current labels.
+
+Returns:
+    pandas.DataFrame: A summary DataFrame with the calculated statistics per cycle.
+"""
+
     df['full cycle'] = (df['half cycle']/2).apply(np.ceil)
 
     # Figuring out which column is current
@@ -775,9 +823,9 @@ def cycle_summary(df, current_label=None):
 PLOTTING
 """
 
-def charge_discharge_plot(df, full_cycle, colormap=None):
+def charge_discharge_plot(df: pd.DataFrame, full_cycle: int, colormap: str = None):
     """
-    Function for plotting individual or multi but discrete charge discharge cycles
+    Function for plotting individual or multi but discrete charge discharge cycles. Only suitable for up to 20 cycles, if more are required use multi_cycle_plot.
 
     Args:
         df (DataFrame): The input dataframe containing the data for plotting.
@@ -835,23 +883,18 @@ def charge_discharge_plot(df, full_cycle, colormap=None):
     return fig, ax
 
 
-def multi_cycle_plot(df, cycles, colormap='viridis'):
+def multi_cycle_plot(df: pd.DataFrame, cycles: ArrayLike, colormap: str = 'viridis') -> Tuple[plt.Figure, plt.Axes]:
     """
-    Function for plotting continuously coloured cycles (useful for large numbers). The cycle numbers correspond to half cycles.
-
-    Parameters:
-    - df: DataFrame
-        The input DataFrame containing the data to be plotted.
-    - cycles: list or array-like
-        A list of cycle numbers to be plotted, these are half cycles.
-    - colormap: str, optional
-        The name of the colormap to be used for coloring the cycles. Default is 'viridis'.
+    Function for plotting continuously coloured cycles (useful for large numbers of cycles). The cycle numbers correspond to half cycles.
+    
+    Args:
+        df (DataFrame): The input dataframe containing the data to be plotted.
+        cycles (list or array-like): The half cycle numbers to be plotted based on the half cycle column (charge and discharge separated).
+        colormap (str, optional): The colormap to use for the plot. Default is 'viridis'.
 
     Returns:
-    - fig: matplotlib.figure.Figure
-        The generated figure object.
-    - ax: matplotlib.axes.Axes
-        The generated axes object.
+        fig (Figure): The matplotlib Figure object.
+        ax (Axes): The matplotlib Axes object.
     """
 
     import matplotlib.pyplot as plt
@@ -875,35 +918,51 @@ def multi_cycle_plot(df, cycles, colormap='viridis'):
     return fig, ax
 
 
-def multi_dqdv_plot(df, cycles, colormap='viridis', 
-    capacity_label='Capacity', 
-    voltage_label='Voltage',
-    polynomial_spline=3, s_spline=1e-5,
-    polyorder_1 = 5, window_size_1=101,
-    polyorder_2 = 5, window_size_2=1001,
-    final_smooth=True):
+def multi_dqdv_plot(df: pd.DataFrame, 
+                    cycles: ArrayLike, 
+                    colormap: str = 'viridis', 
+                    capacity_label: str = 'Capacity', 
+                    voltage_label: str = 'Voltage',
+                    polynomial_spline: int = 3, 
+                    s_spline: float = 1e-5,
+                    polyorder_1: int = 5, 
+                    window_size_1: int = 101,
+                    polyorder_2: int = 5, 
+                    window_size_2: int = 1001,
+                    final_smooth: bool = True
+                    ) -> Tuple[plt.Figure, plt.Axes]:
     """
-    Plot multiple dQ/dV cycles on the same plot with a colormap. Cycles correspond to half cycles. 
-    Uses the internal dqdv_single_cycle function to calculate the dQ/dV curves.
+    Plot multiple dQ/dV cycles on the same plot using a colormap.
 
-    Parameters:
-    - df: DataFrame containing the data.
-    - cycles: List or array-like object of cycle numbers (half cycles) to plot.
-    - colormap: Name of the colormap to use (default: 'viridis').
-    - capacity_label: Label of the capacity column in the DataFrame (default: 'Capacity').
-    - voltage_label: Label of the voltage column in the DataFrame (default: 'Voltage').
-    - polynomial_spline (int, optional): Order of the spline interpolation for the capacity-voltage curve. Defaults to 3. Best results use odd numbers.
-    - s_spline (float, optional): Smoothing factor for the spline interpolation. Defaults to 1e-5.
-    - polyorder_1 (int, optional): Order of the polynomial for the first smoothing filter (Before spline fitting). Defaults to 5. Best results use odd numbers.
-    - window_size_1 (int, optional): Size of the window for the first smoothing filter. (Before spline fitting). Defaults to 101. Must be odd.
-    - polyorder_2 (int, optional): Order of the polynomial for the second optional smoothing filter. Defaults to 5. (After spline fitting and differentiation). Best results use odd numbers.
-    - window_size_2 (int, optional): Size of the window for the second optional smoothing filter. Defaults to 1001. (After spline fitting and differentiation). Must be odd.
-    - final_smooth (bool, optional): Whether to apply final smoothing to the dq/dv curve. Defaults to True.
+    Each cycle corresponds to a half cycle. Internally, this function uses
+    `dqdv_single_cycle` to calculate the dQ/dV curves.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing the cycling data.
+        cycles (ArrayLike): List or array-like of cycle numbers (half cycles) to plot.
+        colormap (str, optional): Name of the colormap to use. Defaults to `'viridis'`.
+        capacity_label (str, optional): Label of the capacity column. Defaults to `'Capacity'`.
+        voltage_label (str, optional): Label of the voltage column. Defaults to `'Voltage'`.
+        polynomial_spline (int, optional): Order of the spline interpolation for the 
+            capacity-voltage curve. Best results with odd numbers. Defaults to `3`.
+        s_spline (float, optional): Smoothing factor for the spline interpolation.
+            Defaults to `1e-5`.
+        polyorder_1 (int, optional): Order of the polynomial for the first smoothing 
+            filter (before spline fitting). Best results with odd numbers. Defaults to `5`.
+        window_size_1 (int, optional): Window size for the first smoothing filter 
+            (before spline fitting). Must be odd. Defaults to `101`.
+        polyorder_2 (int, optional): Order of the polynomial for the second optional 
+            smoothing filter (after spline fitting and differentiation). Best results 
+            with odd numbers. Defaults to `5`.
+        window_size_2 (int, optional): Window size for the second optional smoothing 
+            filter (after spline fitting and differentiation). Must be odd. Defaults to `1001`.
+        final_smooth (bool, optional): Whether to apply final smoothing to the dQ/dV curve. 
+            Defaults to `True`.
 
     Returns:
-    - fig: The matplotlib figure object.
-    - ax: The matplotlib axes object.
-
+        Tuple[plt.Figure, plt.Axes]: 
+            - `fig`: The matplotlib figure object.
+            - `ax`: The matplotlib axes object.
     """
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm

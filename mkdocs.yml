@@ -1,0 +1,15 @@
+site_name: Navani
+theme:
+  name: readthedocs  # Optional: better-looking theme
+plugins:
+  - search
+  - mkdocstrings:
+      handlers: 
+        python:
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_root_full_name: true
+            show_root_signature: true
+            show_root_docstring: true
+            show_root_source: true
