@@ -21,7 +21,7 @@ The main dependencies are :
 
 ## Installation
 
-You will need Python 3.9 or higher to use Navani.
+You will need Python 3.10 or higher to use Navani.
 
 Navani can now be installed using pip:
 
@@ -31,7 +31,7 @@ pip install navani
 
 However it is still advised to install navani using [uv](https://docs.astral.sh/uv/), to manage dependencies.
 
-To install Navani and its dependencies, clone this repository and use uv to setup a virtual environment with the dependecies:
+To install Navani and its dependencies, clone this repository and use uv to setup a virtual environment with the dependencies:
 
 ```shell
 git clone git@github.com/be-smith/navani
