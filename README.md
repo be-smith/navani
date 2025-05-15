@@ -54,7 +54,7 @@ If you would like to contribute to navani it is recommended to install the dev d
 uv sync --all-extras --dev
 ```
 
-If don't want to use uv it is still stronly recommended to use a fresh Python environment to install navani, using e.g., `conda create` or `python -m venv <chosen directory`.
+If don't want to use uv it is still strongly recommended to use a fresh Python environment to install navani, using e.g., `conda create` or `python -m venv <chosen directory`.
 To install navani, either clone this repository and install from your local copy:
 
 ```shell
