@@ -349,6 +349,13 @@ def arbin_res(df: pd.DataFrame) -> pd.DataFrame:
             final_capacity = df.loc[last_active_idx, 'Capacity']
             df.loc[post_rest_idx, 'Capacity'] = final_capacity
 
+            # Handle mid rest rows
+            mid_rest_idx = rest_idx[(rest_idx > first_active_idx) & (rest_idx < last_active_idx)]
+            if len(mid_rest_idx) > 0:
+                # Subtract initial capacity from all mid-rest points
+                df.loc[mid_rest_idx, 'Capacity'] -= initial_capacity
+
+
         else:
             pass
     
