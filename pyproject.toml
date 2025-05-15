@@ -11,12 +11,12 @@ requires-python = ">=3.9"
 dependencies = [
     "numpy ~= 1.26, <2",
     "pandas ~= 2.2, <3",
-    "scipy",
+    "scipy ~= 1.15 < 2",
     "galvani >= 0.4.1",
-    "matplotlib",
-    "openpyxl",
+    "matplotlib ~=3.10, <4",
+    "openpyxl ~= 3.1 < 4",
     "NewareNDA >= 2024.8.1",
-    "requests"
+    "requests ~= 2.32 < 3",
 ]
 
 [project.urls]
