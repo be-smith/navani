@@ -1009,7 +1009,7 @@ wheels = [
 
 [[package]]
 name = "navani"
-version = "0.1.5"
+version = "0.1.9"
 source = { editable = "." }
 dependencies = [
     { name = "galvani" },

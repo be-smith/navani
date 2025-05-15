@@ -1,6 +1,6 @@
 [project]
 name = "navani"
-version = "0.1.5"
+version = "0.1.9"
 description = "Package for processing and plotting echem data from cyclers"
 authors = [
     { name = "Ben Smith", email = "ben.ed.smith2@gmail.com" }
@@ -21,9 +21,11 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/be-smith/navani"
+Issues = "https://github.com/be-smith/navani/issues"
+Documentation = "https://be-smith.github.io/navani/"
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 
 [build-system]
 requires = ["setuptools >= 61.0"]
