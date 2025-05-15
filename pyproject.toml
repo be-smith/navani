@@ -1,6 +1,6 @@
 [project]
 name = "navani"
-version = "0.1.9"
+version = "0.1.10"
 description = "Package for processing and plotting echem data from cyclers"
 authors = [
     { name = "Ben Smith", email = "ben.ed.smith2@gmail.com" }
