@@ -3,6 +3,7 @@ theme:
   name: readthedocs  # Optional: better-looking theme
 plugins:
   - search
+  - include-markdown:
   - mkdocstrings:
       handlers: 
         python:
