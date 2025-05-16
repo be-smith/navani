@@ -1,6 +1,6 @@
 [project]
 name = "navani"
-version = "0.1.10"
+dynamic = ["version"]
 description = "Package for processing and plotting echem data from cyclers"
 authors = [
     { name = "Ben Smith", email = "ben.ed.smith2@gmail.com" }
@@ -28,8 +28,12 @@ Documentation = "https://be-smith.github.io/navani/"
 where = ["src"]
 
 [build-system]
-requires = ["setuptools >= 61.0"]
+requires = ["setuptools >= 72", "setuptools_scm ~= 8.1"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0"
+version_scheme = "post-release"
 
 [dependency-groups]
 dev = [
