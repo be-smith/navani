@@ -1,22 +1,22 @@
 [project]
 name = "navani"
-version = "0.1.9"
+dynamic = ["version"]
 description = "Package for processing and plotting echem data from cyclers"
 authors = [
     { name = "Ben Smith", email = "ben.ed.smith2@gmail.com" }
 ]
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "numpy ~= 1.26, <2",
     "pandas ~= 2.2, <3",
-    "scipy",
+    "scipy ~= 1.15, <2",
     "galvani >= 0.4.1",
-    "matplotlib",
-    "openpyxl",
+    "matplotlib ~=3.10, <4",
+    "openpyxl ~= 3.1, <4",
     "NewareNDA >= 2024.8.1",
-    "requests"
+    "requests ~= 2.32, <3",
 ]
 
 [project.urls]
@@ -28,8 +28,12 @@ Documentation = "https://be-smith.github.io/navani/"
 where = ["src"]
 
 [build-system]
-requires = ["setuptools >= 61.0"]
+requires = ["setuptools >= 72", "setuptools_scm ~= 8.1"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0"
+version_scheme = "post-release"
 
 [dependency-groups]
 dev = [
