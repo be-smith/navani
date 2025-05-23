@@ -12,12 +12,18 @@ Currently supports:
 - Simple `.txt` and Excel `.xls`/`.xlsx` formats produced by e.g., Arbin, Ivium and Lanhe/Lande
 - Neware NDA and NDAX (`.nda`, `.ndax`)
 
-The main dependencies are :
+The main dependencies are:
 
 - pandas
 - [galvani](https://github.com/echemdata/galvani) (BioLogic MPR) 
 - [mdbtools](https://github.com/mdbtools/mdbtools) (for reading Arbin's .res files with galvani).
 - [NewareNDA](https://github.com/Solid-Energy-Systems/NewareNDA) (for reading Neware's NDA and NDAx formats).
+
+Navani is released under the terms of the MIT license. 
+
+> [!WARNING]
+> The [galvani](https://github.com/echemdata/galvani) dependency is available under the terms of [GPLv3 License](https://github.com/echemdata/galvani/blob/master/LICENSE). We believe this usage to be valid following the GPLv3 interpretation of the [copyright holder for galvani](https://github.com/echemdata/galvani/issues/51#issuecomment-701500053). The galvani library is not distributed with Navani, but installing Navani from PyPI will also install GPL-licensed dependencies. Users are responsible for GPL compliance of any downstream projects in this regard.
+
 
 ## Installation
 
