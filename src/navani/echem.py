@@ -63,7 +63,7 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
     # Biologic file
     if extension == '.mpr':
         with open(os.path.join(filepath), 'rb') as f:
-            gal_file = MPRfile(f)
+            gal_file = MPRfile(f, error_on_unknown_column=False)
 
         df = pd.DataFrame(data=gal_file.data)
         df = biologic_processing(df)
