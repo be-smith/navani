@@ -144,8 +144,37 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
     # If the file is a csv previously processed by navani
     # Check for the columns that are expected (Capacity, Voltage, Current, Cycle numbers, state)
     elif extension == '.csv':
-        df = pd.read_csv(filepath, 
-                         index_col=0)
+        # Try robust loading with automatic delimiter detection and encoding error handling
+        try:
+            df = pd.read_csv(
+                filepath,
+                sep=None,
+                index_col=0,
+                encoding_errors='backslashreplace',
+                skip_blank_lines=False,
+                engine='python'
+            )
+
+            # If we have NaN values, try a more lenient parsing approach
+            if df.isnull().values.any():
+                warnings.warn(
+                    f"Loading file with less strict parser: columns were previously detected as {list(df.columns)}"
+                )
+                df = pd.read_csv(
+                    filepath,
+                    sep=None,
+                    index_col=0,
+                    comment='#',
+                    encoding_errors='backslashreplace',
+                    skip_blank_lines=False,
+                    engine='python'
+                )
+                # Drop columns if entirely NaN
+                df.dropna(axis=1, how='all', inplace=True)
+        except Exception as e:
+            raise RuntimeError(f"`pandas.read_csv()` was not able to read the file. Error: {e}")
+
+        # Validate that expected columns are present
         expected_columns = ['Capacity', 'Voltage', 'half cycle', 'full cycle', 'Current', 'state']
         if all(col in df.columns for col in expected_columns):
             # Pandas sometimes reads in the state column as a string - ensure all columns we use are the correct type
