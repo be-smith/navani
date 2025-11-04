@@ -144,8 +144,7 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
     # If the file is a csv previously processed by navani
     # Check for the columns that are expected (Capacity, Voltage, Current, Cycle numbers, state)
     elif extension == '.csv':
-        df = pd.read_csv(filepath, 
-                         index_col=0)
+        df = pd.read_csv(filepath, low_memory=False)
         expected_columns = ['Capacity', 'Voltage', 'half cycle', 'full cycle', 'Current', 'state']
         if all(col in df.columns for col in expected_columns):
             # Pandas sometimes reads in the state column as a string - ensure all columns we use are the correct type
