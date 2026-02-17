@@ -786,6 +786,7 @@ def bdf_processing(df: pd.DataFrame) -> pd.DataFrame:
     df['half cycle'] = (df['cycle change'] == True).cumsum()
 
     # Compute Capacity (mAh) from BDF capacity columns (Ah) or current integration
+    # Same logic as Arbin where if the BDF file contains both charging and discharging capacity columns, we trust those and use them to compute capacity. Otherwise, we fall back to integrating current over time.
     if 'Charging Capacity / Ah' in df.columns and 'Discharging Capacity / Ah' in df.columns:
         df['Capacity'] = (df['Charging Capacity / Ah'] + df['Discharging Capacity / Ah']) * 1000
         _reset_capacity_per_half_cycle(df)
@@ -830,20 +831,24 @@ def export_to_bdf(df: pd.DataFrame, filepath: Union[str, Path]) -> None:
     if 'full cycle' in bdf_df.columns:
         bdf_df['Cycle Count / 1'] = bdf_df['full cycle']
 
-    # Recommended: Step Count / 1 from original cycler step index, fallback to half cycle
-    # Check numeric step columns first (Arbin, BioLogic, Neware)
+    
+    # Optional: Step Index / 1 - try to find a suitable column for this, prioritising existing step index columns, then landdt state column, then state column
     step_col = None
     for col_name in step_index_columns:
         if col_name in bdf_df.columns:
             step_col = col_name
             break
     if step_col is not None:
-        bdf_df['Step Count / 1'] = bdf_df[step_col]
+        bdf_df['Step Index / 1'] = bdf_df[step_col]
     # Landdt uses a string "State" column - encode unique strings as integers
     elif landdt_step_column in bdf_df.columns and bdf_df[landdt_step_column].dtype == object:
-        bdf_df['Step Count / 1'] = bdf_df[landdt_step_column].astype('category').cat.codes
+        bdf_df['Step Index / 1'] = bdf_df[landdt_step_column].astype('category').cat.codes
     elif 'half cycle' in bdf_df.columns:
-        bdf_df['Step Count / 1'] = bdf_df['half cycle']
+        bdf_df['Step Index / 1'] = bdf_df['state'].astype('category').cat.codes
+
+    # Recommended: Step Count /1 - monotonically increasing count of steps (Step Index / 1)
+    bdf_df['Step Count / 1'] = bdf_df.groupby('half cycle')['Step Index / 1'].cumcount() + 1
+
 
     # Optional: Charging and Discharging Capacity / Ah (mAh -> Ah)
     if 'Capacity' in bdf_df.columns and 'state' in bdf_df.columns:
@@ -853,14 +858,6 @@ def export_to_bdf(df: pd.DataFrame, filepath: Union[str, Path]) -> None:
         discharge_mask = bdf_df['state'] == 1
         bdf_df.loc[charge_mask, 'Charging Capacity / Ah'] = bdf_df.loc[charge_mask, 'Capacity'] / 1000
         bdf_df.loc[discharge_mask, 'Discharging Capacity / Ah'] = bdf_df.loc[discharge_mask, 'Capacity'] / 1000
-
-    # Optional: Step Index / 1 (position within each half cycle)
-    if 'half cycle' in bdf_df.columns:
-        bdf_df['Step Index / 1'] = bdf_df.groupby('half cycle').cumcount()
-
-    # Optional: Step Capacity / Ah (mAh -> Ah)
-    if 'Capacity' in bdf_df.columns:
-        bdf_df['Step Capacity / Ah'] = bdf_df['Capacity'] / 1000
 
     bdf_df.to_csv(filepath, index=False)
 
