@@ -2,6 +2,8 @@ import pathlib
 
 import pytest
 
+EXAMPLE_DATA = pathlib.Path(__file__).parent.parent / "Example_data"
+
 
 def test_xlsx_reader_and_dqdv():
     """Run through the example notebook as a test."""
@@ -227,3 +229,136 @@ def test_mpr_files_from_eclab_1150(test_path):
     path = pathlib.Path(__file__).parent.parent / "Example_data" / test_path
     df = ec.echem_file_loader(path)
     assert df.shape[0] > 0
+
+
+def test_bdf_with_capacity():
+    """Test loading a .bdf file with charging/discharging capacity columns."""
+    import navani.echem as ec
+    import numpy as np
+
+    test_path = EXAMPLE_DATA / "test_with_capacity.bdf"
+    df = ec.echem_file_loader(test_path)
+
+    expected_cols = ("state", "cycle change", "half cycle", "Capacity", "Voltage", "Current", "Time", "full cycle")
+    assert all(c in df for c in expected_cols)
+
+    # Current should be converted A -> mA
+    np.testing.assert_almost_equal(df['Current'].iloc[0], 1.0)
+    np.testing.assert_almost_equal(df['Current'].iloc[5], -1.0)
+
+    # Capacity should be in mAh and reset per half cycle
+    assert df['Capacity'].iloc[0] == 0.0
+
+    # Should have 2 half cycles (charge then discharge)
+    assert df['half cycle'].max() == 2
+
+
+def test_bdf_without_capacity():
+    """Test loading a .bdf file without capacity columns (computed from current integration)."""
+    import navani.echem as ec
+
+    test_path = EXAMPLE_DATA / "test_without_capacity.bdf"
+    df = ec.echem_file_loader(test_path)
+
+    expected_cols = ("state", "cycle change", "half cycle", "Capacity", "Voltage", "Current", "Time", "full cycle")
+    assert all(c in df for c in expected_cols)
+    assert (df['Capacity'] >= 0).all()
+
+
+def test_bdf_machine_readable_names():
+    """Test loading a .bdf file with machine-readable column names."""
+    import navani.echem as ec
+
+    test_path = EXAMPLE_DATA / "test_machine_readable.bdf"
+    df = ec.echem_file_loader(test_path)
+
+    expected_cols = ("state", "cycle change", "half cycle", "Capacity", "Voltage", "Current", "Time", "full cycle")
+    assert all(c in df for c in expected_cols)
+
+
+def test_bdf_missing_required():
+    """Test loading a .bdf file with missing required columns raises ValueError."""
+    import navani.echem as ec
+
+    test_path = EXAMPLE_DATA / "test_missing_required.bdf"
+    with pytest.raises(ValueError, match="missing required columns"):
+        ec.echem_file_loader(test_path)
+
+
+ALL_EXAMPLE_FILES = [
+    "bs542_004_gr_li_50ua_50mv_1v_191020_Channel_11.xlsx",
+    "NJK_CC_156_C30_C_x30.xlsx",
+    "jdb11-1_c3_gcpl_5cycles_2V-3p8V_C-24_data_C09.mpr",
+    "arbin_example.res",
+    "test.nda",
+    "test.ndax",
+    "example_output.csv",
+]
+
+
+@pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
+def test_bdf_export_round_trip(filename, tmp_path):
+    """Test exporting each format to BDF and re-importing gives consistent data."""
+    import navani.echem as ec
+    import numpy as np
+
+    df_original = ec.echem_file_loader(EXAMPLE_DATA / filename)
+
+    bdf_path = tmp_path / "export.bdf"
+    ec.export_to_bdf(df_original, bdf_path)
+
+    df_reimported = ec.echem_file_loader(bdf_path)
+
+    expected_cols = ("state", "cycle change", "half cycle", "Capacity", "Voltage", "Current", "full cycle")
+    assert all(c in df_reimported for c in expected_cols)
+
+    # Voltage should survive unchanged
+    np.testing.assert_array_almost_equal(
+        df_original['Voltage'].values,
+        df_reimported['Voltage'].values,
+        decimal=5,
+    )
+
+    # Current should survive the round trip (mA -> A -> mA)
+    np.testing.assert_array_almost_equal(
+        df_original['Current'].values,
+        df_reimported['Current'].values,
+        decimal=3,
+    )
+
+
+@pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
+def test_bdf_export_has_required_columns(filename, tmp_path):
+    """Test that BDF export contains all required and recommended BDF columns."""
+    import navani.echem as ec
+    import pandas as pd
+
+    df = ec.echem_file_loader(EXAMPLE_DATA / filename)
+
+    bdf_path = tmp_path / "export.bdf"
+    ec.export_to_bdf(df, bdf_path)
+
+    bdf_df = pd.read_csv(bdf_path)
+    # BDF required
+    assert 'Test Time / s' in bdf_df.columns
+    assert 'Voltage / V' in bdf_df.columns
+    assert 'Current / A' in bdf_df.columns
+    # BDF recommended
+    assert 'Cycle Count / 1' in bdf_df.columns
+    assert 'Step Count / 1' in bdf_df.columns
+
+
+@pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
+def test_bdf_export_step_count_is_numeric(filename, tmp_path):
+    """Test that Step Count / 1 is always numeric in the exported BDF."""
+    import navani.echem as ec
+    import pandas as pd
+    import numpy as np
+
+    df = ec.echem_file_loader(EXAMPLE_DATA / filename)
+
+    bdf_path = tmp_path / "export.bdf"
+    ec.export_to_bdf(df, bdf_path)
+
+    bdf_df = pd.read_csv(bdf_path)
+    assert np.issubdtype(bdf_df['Step Count / 1'].dtype, np.number)
