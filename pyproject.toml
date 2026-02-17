@@ -19,6 +19,9 @@ dependencies = [
     "requests ~= 2.32, <3",
 ]
 
+[project.optional-dependencies]
+parquet = ["pyarrow >= 10.0"]
+
 [project.urls]
 Homepage = "https://github.com/be-smith/navani"
 Issues = "https://github.com/be-smith/navani/issues"
