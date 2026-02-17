@@ -23,6 +23,66 @@ mpr_col_dict = {'Voltage': 'Ewe/V',
 
 current_labels = ['Current', 'Current(A)', 'I /mA', 'Current/mA', 'I/mA', '<I>/mA']
 
+# Known numeric step index column names from various cycler formats
+# Bio .mpr: "Ns", Arbin .res/.xlsx: "Step_Index", Neware: "Step_Index"
+step_index_columns = ['Step_Index', 'Ns', 'Step Index', 'step_index']
+# Landdt uses a string "State" column (e.g. 'R', 'C_CC', 'D_CC') which needs categorical encoding
+landdt_step_column = 'State'
+
+# BDF column mapping: maps machine-readable names to canonical BDF preferred labels (with unit suffix)
+bdf_col_map = {
+    # Required
+    'test_time_second': 'Test Time / s',
+    'voltage_volt': 'Voltage / V',
+    'current_ampere': 'Current / A',
+    # Recommended
+    'unix_time_second': 'Unix Time / s',
+    'cycle_count': 'Cycle Count / 1',
+    'step_count': 'Step Count / 1',
+    'ambient_temperature_celsius': 'Ambient Temperature / degC',
+    # Optional
+    'step_index': 'Step Index / 1',
+    'charging_capacity_ah': 'Charging Capacity / Ah',
+    'discharging_capacity_ah': 'Discharging Capacity / Ah',
+    'step_capacity_ah': 'Step Capacity / Ah',
+    'net_capacity_ah': 'Net Capacity / Ah',
+    'cumulative_capacity_ah': 'Cumulative Capacity / Ah',
+    'charging_energy_wh': 'Charging Energy / Wh',
+    'discharging_energy_wh': 'Discharging Energy / Wh',
+    'step_energy_wh': 'Step Energy / Wh',
+    'net_energy_wh': 'Net Energy / Wh',
+    'cumulative_energy_wh': 'Cumulative Energy / Wh',
+    'power_watt': 'Power / W',
+    'internal_resistance_ohm': 'Internal Resistance / Ohm',
+    'ambient_pressure_pa': 'Ambient Pressure / Pa',
+    'applied_pressure_pa': 'Applied Pressure / Pa',
+    'temperature_t1_celsius': 'Surface Temperature T1 / degC',
+    'temperature_t2_celsius': 'Surface Temperature T2 / degC',
+    'temperature_t3_celsius': 'Surface Temperature T3 / degC',
+    'temperature_t4_celsius': 'Surface Temperature T4 / degC',
+    'temperature_t5_celsius': 'Surface Temperature T5 / degC',
+}
+
+
+def _read_bdf_file(filepath: Union[str, Path]) -> pd.DataFrame:
+    """Read a BDF file, handling .bdf (CSV), .bdf.gz (compressed CSV), and .bdf.parquet formats."""
+    filepath_str = str(filepath).lower()
+    if filepath_str.endswith('.bdf.parquet'):
+        try:
+            df = pd.read_parquet(filepath)
+        except ImportError:
+            raise ImportError(
+                'Reading .bdf.parquet files requires pyarrow. '
+                'Install it with: pip install navani[parquet]'
+            )
+    elif filepath_str.endswith('.bdf.gz'):
+        df = pd.read_csv(filepath, compression='gzip')
+    elif filepath_str.endswith('.bdf'):
+        df = pd.read_csv(filepath)
+    else:
+        raise ValueError(f'Unrecognised BDF file extension for {filepath}')
+    return df
+
 
 def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: float = None) -> pd.DataFrame:
     """
@@ -59,107 +119,114 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
         RuntimeError: If sheet names do not match known Arbin or Landt Excel formats, or if the file extension is unsupported.
 """
 
-    extension = os.path.splitext(filepath)[-1].lower()
-    # Biologic file
-    if extension == '.mpr':
-        with open(os.path.join(filepath), 'rb') as f:
-            gal_file = MPRfile(f)
+    # Check for BDF files first (handles compound extensions like .bdf.parquet)
+    filepath_lower = str(filepath).lower()
+    if filepath_lower.endswith(('.bdf', '.bdf.parquet', '.bdf.gz')):
+        df = _read_bdf_file(filepath)
+        df = bdf_processing(df)
 
-        df = pd.DataFrame(data=gal_file.data)
-        df = biologic_processing(df)
-
-    # arbin .res file - uses an sql server and requires mdbtools installed
-    # sudo apt get mdbtools for windows and mac
-    elif extension == '.res': 
-        with tempfile.NamedTemporaryFile(delete=True) as tmpfile:
-            r2s.convert_arbin_to_sqlite(os.path.join(filepath), tmpfile.name)
-            dat = sqlite3.connect(tmpfile.name)
-            query = dat.execute("SELECT * From Channel_Normal_Table")
-            cols = [column[0] for column in query.description]
-            df = pd.DataFrame.from_records(data = query.fetchall(), columns = cols)
-            dat.close()
-        df = arbin_res(df)
-
-    # Currently .txt files are assumed to be from an ivium cycler - this may need to be changed
-    # These have time, current and voltage columns only
-    elif extension == '.txt':
-        df = pd.read_csv(os.path.join(filepath), sep='\t')
-        # Checking columns are an exact match
-        if set(['time /s', 'I /mA', 'E /V']) - set(df.columns) == set([]):
-            df = ivium_processing(df)
-        else:
-            raise ValueError('Columns do not match expected columns for an ivium .txt file')
-
-    # Landdt and Arbin can output .xlsx and .xls files
-    elif extension in ['.xlsx', '.xls']:
-        if extension == '.xlsx':
-            xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
-        else:
-            xlsx = pd.ExcelFile(os.path.join(filepath))
-
-        names = xlsx.sheet_names
-        # Use different land processing if all exported as one sheet (different versions of landdt software)
-        if len(names) == 1:
-            df = xlsx.parse(0)
-            df = new_land_processing(df)
-
-        # If Record is a sheet name, then it is a landdt file
-        elif "Record" in names[0]:
-            df_list = [xlsx.parse(0)]
-            if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
-                raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
-            col_names = df_list[0].columns
-
-            for sheet_name in names[1:]:
-                if "Record" in sheet_name:
-                    if len(xlsx.parse(sheet_name, header=None)) != 0:
-                        df_list.append(xlsx.parse(sheet_name, header=None))
-            for sheet in df_list:
-                if not isinstance(sheet, pd.DataFrame):
-                    raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
-                sheet.columns = col_names
-            df = pd.concat(df_list)
-            df.set_index('Index', inplace=True)
-            df = old_land_processing(df)
-
-        # If Channel is a sheet name, then it is an arbin file
-        else:
-            df_list = []
-            # Remove the Channel_Chart sheet if it exists as it's arbin's charting sheet
-            if 'Channel_Chart' in names:
-                names.remove('Channel_Chart')
-            for count, name in enumerate(names):
-                if 'Channel' in name and 'Chart' not in name:
-                    df_list.append(xlsx.parse(count))
-            if len(df_list) > 0:
-                df = pd.concat(df_list)
-                df = arbin_excel(df)
-            else:
-                raise ValueError('Sheet names not recognised as Arbin or Lanndt Excel exports, this file type is not supported.')
-            
-    # Neware files are .nda or .ndax
-    elif extension in (".nda", ".ndax"):
-        df = neware_reader(filepath)
-
-    # If the file is a csv previously processed by navani
-    # Check for the columns that are expected (Capacity, Voltage, Current, Cycle numbers, state)
-    elif extension == '.csv':
-        df = pd.read_csv(filepath, low_memory=False)
-        expected_columns = ['Capacity', 'Voltage', 'half cycle', 'full cycle', 'Current', 'state']
-        if all(col in df.columns for col in expected_columns):
-            # Pandas sometimes reads in the state column as a string - ensure all columns we use are the correct type
-            df['state'] = df['state'].replace('1', 1)
-            df['state'] = df['state'].replace('0', 0)
-            df[['Capacity', 'Voltage', 'Current']] = df[['Capacity', 'Voltage', 'Current']].astype(float)
-            df[['full cycle', 'half cycle']] = df[['full cycle', 'half cycle']].astype(int)
-            pass
-        else:
-            raise ValueError('Columns do not match expected columns for navani processed csv')
-        
-    # If it's a filetype not seen before raise an error
     else:
-        print(extension)
-        raise RuntimeError("Filetype {extension=} not recognised.")
+        extension = os.path.splitext(filepath)[-1].lower()
+        # Biologic file
+        if extension == '.mpr':
+            with open(os.path.join(filepath), 'rb') as f:
+                gal_file = MPRfile(f)
+
+            df = pd.DataFrame(data=gal_file.data)
+            df = biologic_processing(df)
+
+        # arbin .res file - uses an sql server and requires mdbtools installed
+        # sudo apt get mdbtools for windows and mac
+        elif extension == '.res':
+            with tempfile.NamedTemporaryFile(delete=True) as tmpfile:
+                r2s.convert_arbin_to_sqlite(os.path.join(filepath), tmpfile.name)
+                dat = sqlite3.connect(tmpfile.name)
+                query = dat.execute("SELECT * From Channel_Normal_Table")
+                cols = [column[0] for column in query.description]
+                df = pd.DataFrame.from_records(data = query.fetchall(), columns = cols)
+                dat.close()
+            df = arbin_res(df)
+
+        # Currently .txt files are assumed to be from an ivium cycler - this may need to be changed
+        # These have time, current and voltage columns only
+        elif extension == '.txt':
+            df = pd.read_csv(os.path.join(filepath), sep='\t')
+            # Checking columns are an exact match
+            if set(['time /s', 'I /mA', 'E /V']) - set(df.columns) == set([]):
+                df = ivium_processing(df)
+            else:
+                raise ValueError('Columns do not match expected columns for an ivium .txt file')
+
+        # Landdt and Arbin can output .xlsx and .xls files
+        elif extension in ['.xlsx', '.xls']:
+            if extension == '.xlsx':
+                xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
+            else:
+                xlsx = pd.ExcelFile(os.path.join(filepath))
+
+            names = xlsx.sheet_names
+            # Use different land processing if all exported as one sheet (different versions of landdt software)
+            if len(names) == 1:
+                df = xlsx.parse(0)
+                df = new_land_processing(df)
+
+            # If Record is a sheet name, then it is a landdt file
+            elif "Record" in names[0]:
+                df_list = [xlsx.parse(0)]
+                if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
+                    raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
+                col_names = df_list[0].columns
+
+                for sheet_name in names[1:]:
+                    if "Record" in sheet_name:
+                        if len(xlsx.parse(sheet_name, header=None)) != 0:
+                            df_list.append(xlsx.parse(sheet_name, header=None))
+                for sheet in df_list:
+                    if not isinstance(sheet, pd.DataFrame):
+                        raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
+                    sheet.columns = col_names
+                df = pd.concat(df_list)
+                df.set_index('Index', inplace=True)
+                df = old_land_processing(df)
+
+            # If Channel is a sheet name, then it is an arbin file
+            else:
+                df_list = []
+                # Remove the Channel_Chart sheet if it exists as it's arbin's charting sheet
+                if 'Channel_Chart' in names:
+                    names.remove('Channel_Chart')
+                for count, name in enumerate(names):
+                    if 'Channel' in name and 'Chart' not in name:
+                        df_list.append(xlsx.parse(count))
+                if len(df_list) > 0:
+                    df = pd.concat(df_list)
+                    df = arbin_excel(df)
+                else:
+                    raise ValueError('Sheet names not recognised as Arbin or Lanndt Excel exports, this file type is not supported.')
+
+        # Neware files are .nda or .ndax
+        elif extension in (".nda", ".ndax"):
+            df = neware_reader(filepath)
+
+        # If the file is a csv previously processed by navani
+        # Check for the columns that are expected (Capacity, Voltage, Current, Cycle numbers, state)
+        elif extension == '.csv':
+            df = pd.read_csv(filepath, low_memory=False)
+            expected_columns = ['Capacity', 'Voltage', 'half cycle', 'full cycle', 'Current', 'state']
+            if all(col in df.columns for col in expected_columns):
+                # Pandas sometimes reads in the state column as a string - ensure all columns we use are the correct type
+                df['state'] = df['state'].replace('1', 1)
+                df['state'] = df['state'].replace('0', 0)
+                df[['Capacity', 'Voltage', 'Current']] = df[['Capacity', 'Voltage', 'Current']].astype(float)
+                df[['full cycle', 'half cycle']] = df[['full cycle', 'half cycle']].astype(int)
+                pass
+            else:
+                raise ValueError('Columns do not match expected columns for navani processed csv')
+
+        # If it's a filetype not seen before raise an error
+        else:
+            print(extension)
+            raise RuntimeError("Filetype {extension=} not recognised.")
 
     # Adding a full cycle column
     if "half cycle" in df.columns:
@@ -700,7 +767,156 @@ def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh
     return df
 
 
-def dqdv_single_cycle(capacity: ArrayLike, voltage: ArrayLike, 
+def bdf_processing(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Process a DataFrame from a Battery Data Format (BDF) file.
+
+    BDF columns (e.g. 'Current / A', 'Voltage / V') are preserved as-is.
+    Navani columns (Current in mA, Capacity in mAh, etc.) are created alongside them.
+
+    Args:
+        df (pandas.DataFrame): Input DataFrame with BDF column headers.
+
+    Returns:
+        pandas.DataFrame: Processed DataFrame with standard navani columns.
+
+    Raises:
+        ValueError: If required BDF columns are missing.
+    """
+    # Rename machine-readable names to canonical BDF preferred labels
+    rename_map = {col: bdf_col_map[col] for col in df.columns if col in bdf_col_map}
+    df = df.rename(columns=rename_map)
+
+    # Validate required BDF columns
+    required = {'Test Time / s', 'Voltage / V', 'Current / A'}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f'BDF file missing required columns: {missing}')
+
+    # Create navani columns from BDF columns
+    df['Time'] = df['Test Time / s']
+    df['Voltage'] = df['Voltage / V']
+    df['Current'] = df['Current / A'] * 1000  # A -> mA
+
+    # Determine state from current direction
+    def bdf_state(x: float):
+        if x > 0:
+            return 0
+        elif x < 0:
+            return 1
+        elif x == 0:
+            return 'R'
+        else:
+            raise ValueError('Unexpected value in current - not a number')
+
+    df['state'] = df['Current'].map(lambda x: bdf_state(x))
+
+    # Detect cycle changes and compute half cycles
+    not_rest_idx = df[df['state'] != 'R'].index
+    df['cycle change'] = False
+    df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(
+        df.loc[not_rest_idx, 'state'].shift()
+    )
+    df['half cycle'] = (df['cycle change'] == True).cumsum()
+
+    # Compute Capacity (mAh) from BDF capacity columns (Ah) or current integration
+    if 'Charging Capacity / Ah' in df.columns and 'Discharging Capacity / Ah' in df.columns:
+        df['Capacity'] = (df['Charging Capacity / Ah'] + df['Discharging Capacity / Ah']) * 1000
+        for cycle in df['half cycle'].unique():
+            cycle_df = df[df['half cycle'] == cycle]
+            non_rest_idx = cycle_df[cycle_df['state'] != 'R'].index
+            rest_idx = cycle_df[cycle_df['state'] == 'R'].index
+            if len(non_rest_idx) > 0:
+                first_active_idx = non_rest_idx[0]
+                last_active_idx = non_rest_idx[-1]
+                initial_capacity = df.loc[first_active_idx, 'Capacity']
+                df.loc[non_rest_idx, 'Capacity'] -= initial_capacity
+                pre_rest_idx = rest_idx[rest_idx < first_active_idx]
+                df.loc[pre_rest_idx, 'Capacity'] = 0
+                post_rest_idx = rest_idx[rest_idx > last_active_idx]
+                final_capacity = df.loc[last_active_idx, 'Capacity']
+                df.loc[post_rest_idx, 'Capacity'] = final_capacity
+                mid_rest_idx = rest_idx[(rest_idx > first_active_idx) & (rest_idx < last_active_idx)]
+                if len(mid_rest_idx) > 0:
+                    df.loc[mid_rest_idx, 'Capacity'] -= initial_capacity
+    else:
+        # Compute capacity from current integration (like ivium_processing)
+        df['dq'] = np.diff(df['Time'], prepend=0) * df['Current']
+        for cycle in df['half cycle'].unique():
+            mask = df['half cycle'] == cycle
+            idx = df.index[mask]
+            df.loc[idx, 'Capacity'] = abs(df.loc[idx, 'dq']).cumsum() / 3600
+
+    return df
+
+
+def export_to_bdf(df: pd.DataFrame, filepath: Union[str, Path]) -> None:
+    """
+    Export a navani DataFrame to Battery Data Format (BDF) CSV.
+
+    All original columns are preserved in the output. BDF-standard columns are added
+    with appropriate unit conversions (mA -> A, mAh -> Ah).
+
+    Args:
+        df (pandas.DataFrame): A navani-processed DataFrame (from echem_file_loader).
+        filepath (Union[str, Path]): Output file path. Should end with .bdf.
+
+    Returns:
+        None
+    """
+    bdf_df = df.copy()
+
+    # Required: Test Time / s
+    if 'Time' in bdf_df.columns:
+        bdf_df['Test Time / s'] = bdf_df['Time']
+
+    # Required: Voltage / V
+    bdf_df['Voltage / V'] = bdf_df['Voltage']
+
+    # Required: Current / A (mA -> A)
+    if 'Current' in bdf_df.columns:
+        bdf_df['Current / A'] = bdf_df['Current'] / 1000
+
+    # Recommended: Cycle Count / 1
+    if 'full cycle' in bdf_df.columns:
+        bdf_df['Cycle Count / 1'] = bdf_df['full cycle']
+
+    # Recommended: Step Count / 1 from original cycler step index, fallback to half cycle
+    # Check numeric step columns first (Arbin, BioLogic, Neware)
+    step_col = None
+    for col_name in step_index_columns:
+        if col_name in bdf_df.columns:
+            step_col = col_name
+            break
+    if step_col is not None:
+        bdf_df['Step Count / 1'] = bdf_df[step_col]
+    # Landdt uses a string "State" column - encode unique strings as integers
+    elif landdt_step_column in bdf_df.columns and bdf_df[landdt_step_column].dtype == object:
+        bdf_df['Step Count / 1'] = bdf_df[landdt_step_column].astype('category').cat.codes
+    elif 'half cycle' in bdf_df.columns:
+        bdf_df['Step Count / 1'] = bdf_df['half cycle']
+
+    # Optional: Charging and Discharging Capacity / Ah (mAh -> Ah)
+    if 'Capacity' in bdf_df.columns and 'state' in bdf_df.columns:
+        bdf_df['Charging Capacity / Ah'] = 0.0
+        bdf_df['Discharging Capacity / Ah'] = 0.0
+        charge_mask = bdf_df['state'] == 0
+        discharge_mask = bdf_df['state'] == 1
+        bdf_df.loc[charge_mask, 'Charging Capacity / Ah'] = bdf_df.loc[charge_mask, 'Capacity'] / 1000
+        bdf_df.loc[discharge_mask, 'Discharging Capacity / Ah'] = bdf_df.loc[discharge_mask, 'Capacity'] / 1000
+
+    # Optional: Step Index / 1 (position within each half cycle)
+    if 'half cycle' in bdf_df.columns:
+        bdf_df['Step Index / 1'] = bdf_df.groupby('half cycle').cumcount()
+
+    # Optional: Step Capacity / Ah (mAh -> Ah)
+    if 'Capacity' in bdf_df.columns:
+        bdf_df['Step Capacity / Ah'] = bdf_df['Capacity'] / 1000
+
+    bdf_df.to_csv(filepath, index=False)
+
+
+def dqdv_single_cycle(capacity: ArrayLike, voltage: ArrayLike,
                     polynomial_spline: int = 3, s_spline: float = 1e-5,
                     polyorder_1: int = 5, window_size_1: int = 101,
                     polyorder_2: int = 5, window_size_2: int = 1001,
