@@ -1,0 +1,5 @@
+test_time_second,voltage_volt,current_ampere
+0,3.0,0.001
+1,3.1,0.001
+2,3.2,0.001
+3,3.3,0.001
