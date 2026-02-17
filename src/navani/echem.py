@@ -843,7 +843,7 @@ def export_to_bdf(df: pd.DataFrame, save=False, filepath=Optional[Union[str, Pat
     # Landdt uses a string "State" column - encode unique strings as integers
     elif landdt_step_column in bdf_df.columns and bdf_df[landdt_step_column].dtype == object:
         bdf_df['Step Index / 1'] = bdf_df[landdt_step_column].astype('category').cat.codes
-    elif 'half cycle' in bdf_df.columns:
+    elif 'state' in bdf_df.columns:
         bdf_df['Step Index / 1'] = bdf_df['state'].astype('category').cat.codes
 
     # Recommended: Step Count / 1 - increases each time Step Index / 1 changes
