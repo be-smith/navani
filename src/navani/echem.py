@@ -125,108 +125,108 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
         df = _read_bdf_file(filepath)
         df = bdf_processing(df)
 
+    elif filepath_lower.endswith('.mpr'):
+        # Biologic file
+        with open(os.path.join(filepath), 'rb') as f:
+            gal_file = MPRfile(f)
+
+        df = pd.DataFrame(data=gal_file.data)
+        df = biologic_processing(df)
+
+    # arbin .res file - uses an sql server and requires mdbtools installed
+    # sudo apt get mdbtools for windows and mac
+    elif filepath_lower.endswith('.res'):
+        with tempfile.NamedTemporaryFile(delete=True) as tmpfile:
+            r2s.convert_arbin_to_sqlite(os.path.join(filepath), tmpfile.name)
+            dat = sqlite3.connect(tmpfile.name)
+            query = dat.execute("SELECT * From Channel_Normal_Table")
+            cols = [column[0] for column in query.description]
+            df = pd.DataFrame.from_records(data = query.fetchall(), columns = cols)
+            dat.close()
+        df = arbin_res(df)
+
+    # Currently .txt files are assumed to be from an ivium cycler - this may need to be changed
+    # These have time, current and voltage columns only
+    elif filepath_lower.endswith('.txt'):
+        df = pd.read_csv(os.path.join(filepath), sep='\t')
+        # Checking columns are an exact match
+        if set(['time /s', 'I /mA', 'E /V']) - set(df.columns) == set([]):
+            df = ivium_processing(df)
+        else:
+            raise ValueError('Columns do not match expected columns for an ivium .txt file')
+
+    # Landdt and Arbin can output .xlsx and .xls files
+    elif filepath_lower.endswith(('.xlsx', '.xls')):
+        extension = os.path.splitext(filepath)[-1].lower()
+        if extension == '.xlsx':
+            xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
+        else:
+            xlsx = pd.ExcelFile(os.path.join(filepath))
+
+        names = xlsx.sheet_names
+        # Use different land processing if all exported as one sheet (different versions of landdt software)
+        if len(names) == 1:
+            df = xlsx.parse(0)
+            df = new_land_processing(df)
+
+        # If Record is a sheet name, then it is a landdt file
+        elif "Record" in names[0]:
+            df_list = [xlsx.parse(0)]
+            if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
+                raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
+            col_names = df_list[0].columns
+
+            for sheet_name in names[1:]:
+                if "Record" in sheet_name:
+                    if len(xlsx.parse(sheet_name, header=None)) != 0:
+                        df_list.append(xlsx.parse(sheet_name, header=None))
+            for sheet in df_list:
+                if not isinstance(sheet, pd.DataFrame):
+                    raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
+                sheet.columns = col_names
+            df = pd.concat(df_list)
+            df.set_index('Index', inplace=True)
+            df = old_land_processing(df)
+
+        # If Channel is a sheet name, then it is an arbin file
+        else:
+            df_list = []
+            # Remove the Channel_Chart sheet if it exists as it's arbin's charting sheet
+            if 'Channel_Chart' in names:
+                names.remove('Channel_Chart')
+            for count, name in enumerate(names):
+                if 'Channel' in name and 'Chart' not in name:
+                    df_list.append(xlsx.parse(count))
+            if len(df_list) > 0:
+                df = pd.concat(df_list)
+                df = arbin_excel(df)
+            else:
+                raise ValueError('Sheet names not recognised as Arbin or Lanndt Excel exports, this file type is not supported.')
+
+    # Neware files are .nda or .ndax
+    elif filepath_lower.endswith(('.nda', '.ndax')):
+        df = neware_reader(filepath)
+
+    # If the file is a csv previously processed by navani
+    # Check for the columns that are expected (Capacity, Voltage, Current, Cycle numbers, state)
+    elif filepath_lower.endswith('.csv'):
+        df = pd.read_csv(filepath, low_memory=False)
+        expected_columns = ['Capacity', 'Voltage', 'half cycle', 'full cycle', 'Current', 'state']
+        if all(col in df.columns for col in expected_columns):
+            # Pandas sometimes reads in the state column as a string - ensure all columns we use are the correct type
+            df['state'] = df['state'].replace('1', 1)
+            df['state'] = df['state'].replace('0', 0)
+            df[['Capacity', 'Voltage', 'Current']] = df[['Capacity', 'Voltage', 'Current']].astype(float)
+            df[['full cycle', 'half cycle']] = df[['full cycle', 'half cycle']].astype(int)
+            pass
+        else:
+            raise ValueError('Columns do not match expected columns for navani processed csv')
+
+    # If it's a filetype not seen before raise an error
     else:
         extension = os.path.splitext(filepath)[-1].lower()
-        # Biologic file
-        if extension == '.mpr':
-            with open(os.path.join(filepath), 'rb') as f:
-                gal_file = MPRfile(f)
-
-            df = pd.DataFrame(data=gal_file.data)
-            df = biologic_processing(df)
-
-        # arbin .res file - uses an sql server and requires mdbtools installed
-        # sudo apt get mdbtools for windows and mac
-        elif extension == '.res':
-            with tempfile.NamedTemporaryFile(delete=True) as tmpfile:
-                r2s.convert_arbin_to_sqlite(os.path.join(filepath), tmpfile.name)
-                dat = sqlite3.connect(tmpfile.name)
-                query = dat.execute("SELECT * From Channel_Normal_Table")
-                cols = [column[0] for column in query.description]
-                df = pd.DataFrame.from_records(data = query.fetchall(), columns = cols)
-                dat.close()
-            df = arbin_res(df)
-
-        # Currently .txt files are assumed to be from an ivium cycler - this may need to be changed
-        # These have time, current and voltage columns only
-        elif extension == '.txt':
-            df = pd.read_csv(os.path.join(filepath), sep='\t')
-            # Checking columns are an exact match
-            if set(['time /s', 'I /mA', 'E /V']) - set(df.columns) == set([]):
-                df = ivium_processing(df)
-            else:
-                raise ValueError('Columns do not match expected columns for an ivium .txt file')
-
-        # Landdt and Arbin can output .xlsx and .xls files
-        elif extension in ['.xlsx', '.xls']:
-            if extension == '.xlsx':
-                xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
-            else:
-                xlsx = pd.ExcelFile(os.path.join(filepath))
-
-            names = xlsx.sheet_names
-            # Use different land processing if all exported as one sheet (different versions of landdt software)
-            if len(names) == 1:
-                df = xlsx.parse(0)
-                df = new_land_processing(df)
-
-            # If Record is a sheet name, then it is a landdt file
-            elif "Record" in names[0]:
-                df_list = [xlsx.parse(0)]
-                if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
-                    raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
-                col_names = df_list[0].columns
-
-                for sheet_name in names[1:]:
-                    if "Record" in sheet_name:
-                        if len(xlsx.parse(sheet_name, header=None)) != 0:
-                            df_list.append(xlsx.parse(sheet_name, header=None))
-                for sheet in df_list:
-                    if not isinstance(sheet, pd.DataFrame):
-                        raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
-                    sheet.columns = col_names
-                df = pd.concat(df_list)
-                df.set_index('Index', inplace=True)
-                df = old_land_processing(df)
-
-            # If Channel is a sheet name, then it is an arbin file
-            else:
-                df_list = []
-                # Remove the Channel_Chart sheet if it exists as it's arbin's charting sheet
-                if 'Channel_Chart' in names:
-                    names.remove('Channel_Chart')
-                for count, name in enumerate(names):
-                    if 'Channel' in name and 'Chart' not in name:
-                        df_list.append(xlsx.parse(count))
-                if len(df_list) > 0:
-                    df = pd.concat(df_list)
-                    df = arbin_excel(df)
-                else:
-                    raise ValueError('Sheet names not recognised as Arbin or Lanndt Excel exports, this file type is not supported.')
-
-        # Neware files are .nda or .ndax
-        elif extension in (".nda", ".ndax"):
-            df = neware_reader(filepath)
-
-        # If the file is a csv previously processed by navani
-        # Check for the columns that are expected (Capacity, Voltage, Current, Cycle numbers, state)
-        elif extension == '.csv':
-            df = pd.read_csv(filepath, low_memory=False)
-            expected_columns = ['Capacity', 'Voltage', 'half cycle', 'full cycle', 'Current', 'state']
-            if all(col in df.columns for col in expected_columns):
-                # Pandas sometimes reads in the state column as a string - ensure all columns we use are the correct type
-                df['state'] = df['state'].replace('1', 1)
-                df['state'] = df['state'].replace('0', 0)
-                df[['Capacity', 'Voltage', 'Current']] = df[['Capacity', 'Voltage', 'Current']].astype(float)
-                df[['full cycle', 'half cycle']] = df[['full cycle', 'half cycle']].astype(int)
-                pass
-            else:
-                raise ValueError('Columns do not match expected columns for navani processed csv')
-
-        # If it's a filetype not seen before raise an error
-        else:
-            print(extension)
-            raise RuntimeError("Filetype {extension=} not recognised.")
+        print(extension)
+        raise RuntimeError("Filetype {extension=} not recognised.")
 
     # Adding a full cycle column
     if "half cycle" in df.columns:
