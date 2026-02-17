@@ -7,7 +7,7 @@ import tempfile
 import sqlite3
 import os
 import matplotlib.pyplot as plt
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 from pathlib import Path
 from numpy.typing import ArrayLike, NDArray
 import warnings
@@ -801,7 +801,7 @@ def bdf_processing(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def export_to_bdf(df: pd.DataFrame, filepath: Union[str, Path]) -> None:
+def export_to_bdf(df: pd.DataFrame, save=False, filepath=Optional[Union[str, Path]]) -> pd.DataFrame:
     """
     Export a navani DataFrame to Battery Data Format (BDF) CSV.
 
@@ -813,7 +813,7 @@ def export_to_bdf(df: pd.DataFrame, filepath: Union[str, Path]) -> None:
         filepath (Union[str, Path]): Output file path. Should end with .bdf.
 
     Returns:
-        None
+        bdf_df (pandas.DataFrame): The DataFrame that was exported to BDF, with BDF columns added.
     """
     bdf_df = df.copy()
 
@@ -846,8 +846,9 @@ def export_to_bdf(df: pd.DataFrame, filepath: Union[str, Path]) -> None:
     elif 'half cycle' in bdf_df.columns:
         bdf_df['Step Index / 1'] = bdf_df['state'].astype('category').cat.codes
 
-    # Recommended: Step Count /1 - monotonically increasing count of steps (Step Index / 1)
-    bdf_df['Step Count / 1'] = bdf_df.groupby('half cycle')['Step Index / 1'].cumcount() + 1
+    # Recommended: Step Count / 1 - increases each time Step Index / 1 changes
+    if 'Step Index / 1' in bdf_df.columns:
+        bdf_df['Step Count / 1'] = (bdf_df['Step Index / 1'] != bdf_df['Step Index / 1'].shift()).cumsum()
 
 
     # Optional: Charging and Discharging Capacity / Ah (mAh -> Ah)
@@ -859,7 +860,11 @@ def export_to_bdf(df: pd.DataFrame, filepath: Union[str, Path]) -> None:
         bdf_df.loc[charge_mask, 'Charging Capacity / Ah'] = bdf_df.loc[charge_mask, 'Capacity'] / 1000
         bdf_df.loc[discharge_mask, 'Discharging Capacity / Ah'] = bdf_df.loc[discharge_mask, 'Capacity'] / 1000
 
-    bdf_df.to_csv(filepath, index=False)
+    # Optionally save to csv file with specified filepath
+    if save:
+        bdf_df.to_csv(filepath, index=False)
+    
+    return bdf_df
 
 
 def dqdv_single_cycle(capacity: ArrayLike, voltage: ArrayLike,

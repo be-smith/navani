@@ -305,7 +305,7 @@ def test_bdf_export_round_trip(filename, tmp_path):
     df_original = ec.echem_file_loader(EXAMPLE_DATA / filename)
 
     bdf_path = tmp_path / "export.bdf"
-    ec.export_to_bdf(df_original, bdf_path)
+    ec.export_to_bdf(df_original, save=True, filepath=bdf_path)
 
     df_reimported = ec.echem_file_loader(bdf_path)
 
@@ -336,7 +336,7 @@ def test_bdf_export_has_required_columns(filename, tmp_path):
     df = ec.echem_file_loader(EXAMPLE_DATA / filename)
 
     bdf_path = tmp_path / "export.bdf"
-    ec.export_to_bdf(df, bdf_path)
+    ec.export_to_bdf(df, save=True, filepath=bdf_path)
 
     bdf_df = pd.read_csv(bdf_path)
     # BDF required
@@ -358,7 +358,7 @@ def test_bdf_export_step_count_is_numeric(filename, tmp_path):
     df = ec.echem_file_loader(EXAMPLE_DATA / filename)
 
     bdf_path = tmp_path / "export.bdf"
-    ec.export_to_bdf(df, bdf_path)
+    ec.export_to_bdf(df, save=True, filepath=bdf_path)
 
     bdf_df = pd.read_csv(bdf_path)
     assert np.issubdtype(bdf_df['Step Count / 1'].dtype, np.number)
