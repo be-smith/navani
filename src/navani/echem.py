@@ -67,7 +67,7 @@ bdf_col_map = {
 
 
 def _read_bdf_file(filepath: Union[str, Path]) -> pd.DataFrame:
-    """Read a BDF file, handling .bdf (CSV), .bdf.gz (compressed CSV), and .bdf.parquet formats."""
+    """Read a BDF file, handling .bdf (CSV), .bdf.csv, .bdf.gz (compressed CSV), and .bdf.parquet formats."""
     filepath_str = str(filepath).lower()
     if filepath_str.endswith('.bdf.parquet'):
         try:
@@ -79,7 +79,7 @@ def _read_bdf_file(filepath: Union[str, Path]) -> pd.DataFrame:
             )
     elif filepath_str.endswith('.bdf.gz'):
         df = pd.read_csv(filepath, compression='gzip')
-    elif filepath_str.endswith('.bdf'):
+    elif filepath_str.endswith(('.bdf', '.bdf.csv')):
         df = pd.read_csv(filepath)
     else:
         raise ValueError(f'Unrecognised BDF file extension for {filepath}')
@@ -125,7 +125,7 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
 
     # Check for BDF files first (handles compound extensions like .bdf.parquet)
     filepath_lower = str(filepath).lower()
-    if filepath_lower.endswith(('.bdf', '.bdf.parquet', '.bdf.gz')):
+    if filepath_lower.endswith(('.bdf', '.bdf.csv', '.bdf.parquet', '.bdf.gz')):
         df = _read_bdf_file(filepath)
         df = bdf_processing(df)
 
@@ -230,7 +230,7 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
     else:
         extension = os.path.splitext(filepath)[-1].lower()
         print(extension)
-        raise RuntimeError("Filetype {extension=} not recognised.")
+        raise RuntimeError(f"Filetype {extension!r} not recognised.")
 
     # Adding a full cycle column
     if "half cycle" in df.columns:
@@ -791,8 +791,9 @@ def bdf_processing(df: pd.DataFrame) -> pd.DataFrame:
         df['Capacity'] = (df['Charging Capacity / Ah'] + df['Discharging Capacity / Ah']) * 1000
         _reset_capacity_per_half_cycle(df)
     else:
-        # Compute capacity from current integration (like ivium_processing)
-        df['dq'] = np.diff(df['Time'], prepend=0) * df['Current']
+        # Compute capacity from current integration
+        dt = df['Time'].diff().fillna(0)
+        df['dq'] = dt * df['Current']
         for cycle in df['half cycle'].unique():
             mask = df['half cycle'] == cycle
             idx = df.index[mask]
@@ -801,7 +802,7 @@ def bdf_processing(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def export_to_bdf(df: pd.DataFrame, save=False, filepath=Optional[Union[str, Path]]) -> pd.DataFrame:
+def export_to_bdf(df: pd.DataFrame, save: bool = False, filepath: Optional[Union[str, Path]] = None) -> pd.DataFrame:
     """
     Export a navani DataFrame to Battery Data Format (BDF) CSV.
 

@@ -231,12 +231,17 @@ def test_mpr_files_from_eclab_1150(test_path):
     assert df.shape[0] > 0
 
 
-def test_bdf_with_capacity():
-    """Test loading a .bdf file with charging/discharging capacity columns."""
+@pytest.mark.parametrize("filename", [
+    "test_with_capacity.bdf",
+    "test_with_capacity.bdf.gz",
+    "test_with_capacity.bdf.parquet",
+])
+def test_bdf_with_capacity(filename):
+    """Test loading a .bdf, .bdf.gz and .bdf.parquet file with charging/discharging capacity columns."""
     import navani.echem as ec
     import numpy as np
 
-    test_path = EXAMPLE_DATA / "test_with_capacity.bdf"
+    test_path = EXAMPLE_DATA / filename
     df = ec.echem_file_loader(test_path)
 
     expected_cols = ("state", "cycle change", "half cycle", "Capacity", "Voltage", "Current", "Time", "full cycle")
