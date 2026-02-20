@@ -239,6 +239,8 @@ def test_mpr_files_from_eclab_1150(test_path):
 ])
 def test_bdf_with_capacity(filename):
     """Test loading a .bdf, .bdf.gz and .bdf.parquet file with charging/discharging capacity columns."""
+    if filename.endswith('.parquet'):
+        pytest.importorskip("pyarrow")
     import navani.echem as ec
     import numpy as np
 
