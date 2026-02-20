@@ -7,10 +7,12 @@ import tempfile
 import sqlite3
 import os
 import matplotlib.pyplot as plt
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 from pathlib import Path
 from numpy.typing import ArrayLike, NDArray
 import warnings
+
+from navani.utils import _reset_capacity_per_half_cycle
 
 
 # Different cyclers name their columns slightly differently 
@@ -22,6 +24,8 @@ mpr_col_dict = {'Voltage': 'Ewe/V',
                 'Capacity': 'Capacity'}
 
 current_labels = ['Current', 'Current(A)', 'I /mA', 'Current/mA', 'I/mA', '<I>/mA']
+
+
 
 
 def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: float = None) -> pd.DataFrame:
@@ -59,9 +63,15 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
         RuntimeError: If sheet names do not match known Arbin or Landt Excel formats, or if the file extension is unsupported.
 """
 
-    extension = os.path.splitext(filepath)[-1].lower()
-    # Biologic file
-    if extension == '.mpr':
+    # Check for BDF files first (handles compound extensions like .bdf.parquet)
+    filepath_lower = str(filepath).lower()
+    if filepath_lower.endswith(('.bdf', '.bdf.csv', '.bdf.parquet', '.bdf.gz')):
+        from navani.bdf import _read_bdf_file, bdf_processing
+        df = _read_bdf_file(filepath)
+        df = bdf_processing(df)
+
+    elif filepath_lower.endswith('.mpr'):
+        # Biologic file
         with open(os.path.join(filepath), 'rb') as f:
             gal_file = MPRfile(f)
 
@@ -70,7 +80,7 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
 
     # arbin .res file - uses an sql server and requires mdbtools installed
     # sudo apt get mdbtools for windows and mac
-    elif extension == '.res': 
+    elif filepath_lower.endswith('.res'):
         with tempfile.NamedTemporaryFile(delete=True) as tmpfile:
             r2s.convert_arbin_to_sqlite(os.path.join(filepath), tmpfile.name)
             dat = sqlite3.connect(tmpfile.name)
@@ -82,7 +92,7 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
 
     # Currently .txt files are assumed to be from an ivium cycler - this may need to be changed
     # These have time, current and voltage columns only
-    elif extension == '.txt':
+    elif filepath_lower.endswith('.txt'):
         df = pd.read_csv(os.path.join(filepath), sep='\t')
         # Checking columns are an exact match
         if set(['time /s', 'I /mA', 'E /V']) - set(df.columns) == set([]):
@@ -91,7 +101,8 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
             raise ValueError('Columns do not match expected columns for an ivium .txt file')
 
     # Landdt and Arbin can output .xlsx and .xls files
-    elif extension in ['.xlsx', '.xls']:
+    elif filepath_lower.endswith(('.xlsx', '.xls')):
+        extension = os.path.splitext(filepath)[-1].lower()
         if extension == '.xlsx':
             xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
         else:
@@ -136,14 +147,14 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
                 df = arbin_excel(df)
             else:
                 raise ValueError('Sheet names not recognised as Arbin or Lanndt Excel exports, this file type is not supported.')
-            
+
     # Neware files are .nda or .ndax
-    elif extension in (".nda", ".ndax"):
+    elif filepath_lower.endswith(('.nda', '.ndax')):
         df = neware_reader(filepath)
 
     # If the file is a csv previously processed by navani
     # Check for the columns that are expected (Capacity, Voltage, Current, Cycle numbers, state)
-    elif extension == '.csv':
+    elif filepath_lower.endswith('.csv'):
         df = pd.read_csv(filepath, low_memory=False)
         expected_columns = ['Capacity', 'Voltage', 'half cycle', 'full cycle', 'Current', 'state']
         if all(col in df.columns for col in expected_columns):
@@ -155,11 +166,12 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
             pass
         else:
             raise ValueError('Columns do not match expected columns for navani processed csv')
-        
+
     # If it's a filetype not seen before raise an error
     else:
+        extension = os.path.splitext(filepath)[-1].lower()
         print(extension)
-        raise RuntimeError("Filetype {extension=} not recognised.")
+        raise RuntimeError(f"Filetype {extension!r} not recognised.")
 
     # Adding a full cycle column
     if "half cycle" in df.columns:
@@ -324,40 +336,9 @@ def arbin_res(df: pd.DataFrame) -> pd.DataFrame:
     else:
         raise KeyError('Unable to find capacity columns, do not match Charge_Capacity or Charge_Capacity(Ah)')
 
-    # Subtracting the initial capacity from each half cycle so it begins at zero
-    # This could probably be done better by integrating the current over time like all the others - but I like to keep the capacity recorded by the machine where possible
-    for cycle in df['half cycle'].unique():
-        cycle_df = df[df['half cycle'] == cycle]
-        non_rest_idx = cycle_df[cycle_df['state'] != 'R'].index
-        rest_idx = cycle_df[cycle_df['state'] == 'R'].index
+    # Reset capacity to begin at zero for each half cycle
+    _reset_capacity_per_half_cycle(df)
 
-        if len(non_rest_idx) > 0:
-            first_active_idx = non_rest_idx[0]
-            last_active_idx = non_rest_idx[-1]
-            initial_capacity = df.loc[first_active_idx, 'Capacity']
-
-            # Subtract initial capacity from all non-rest points
-            df.loc[non_rest_idx, 'Capacity'] -= initial_capacity
-
-            # Handle rest rows before the first active point by setting capacity to 0
-            pre_rest_idx = rest_idx[rest_idx < first_active_idx]
-            df.loc[pre_rest_idx, 'Capacity'] = 0
-
-            # Handle rest rows after the last active point by setting capacity to the final capacity value
-            post_rest_idx = rest_idx[rest_idx > last_active_idx]
-            final_capacity = df.loc[last_active_idx, 'Capacity']
-            df.loc[post_rest_idx, 'Capacity'] = final_capacity
-
-            # Handle mid rest rows
-            mid_rest_idx = rest_idx[(rest_idx > first_active_idx) & (rest_idx < last_active_idx)]
-            if len(mid_rest_idx) > 0:
-                # Subtract initial capacity from all mid-rest points
-                df.loc[mid_rest_idx, 'Capacity'] -= initial_capacity
-
-
-        else:
-            pass
-    
     if "Test_Time(s)" in df.columns:
         df["Time"] = df["Test_Time(s)"]
         return df
@@ -640,14 +621,7 @@ def arbin_excel(df: pd.DataFrame) -> pd.DataFrame:
     # Calculating the capacity and changing to mAh
     df['Capacity'] = (df['Discharge_Capacity(Ah)'] + df['Charge_Capacity(Ah)']) * 1000
 
-    for cycle in df['half cycle'].unique():
-        idx = df[(df['half cycle'] == cycle) & (df['state'] != 'R')].index  
-        if len(idx) > 0:
-            cycle_idx = df[df['half cycle'] == cycle].index
-            initial_capacity = df.loc[idx[0], 'Capacity']
-            df.loc[cycle_idx, 'Capacity'] = df.loc[cycle_idx, 'Capacity'] - initial_capacity
-        else:
-            pass
+    _reset_capacity_per_half_cycle(df)
 
     df['Voltage'] = df['Voltage(V)']
     df['Current'] = df['Current(A)']
@@ -700,7 +674,7 @@ def neware_reader(filename: Union[str, Path], expected_capacity_unit: str = "mAh
     return df
 
 
-def dqdv_single_cycle(capacity: ArrayLike, voltage: ArrayLike, 
+def dqdv_single_cycle(capacity: ArrayLike, voltage: ArrayLike,
                     polynomial_spline: int = 3, s_spline: float = 1e-5,
                     polyorder_1: int = 5, window_size_1: int = 101,
                     polyorder_2: int = 5, window_size_2: int = 1001,
