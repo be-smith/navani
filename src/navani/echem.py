@@ -76,6 +76,7 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
             gal_file = MPRfile(f)
 
         df = pd.DataFrame(data=gal_file.data)
+        df["timestamp"] = gal_file.timestamp + pd.to_timedelta(df["time/s"], unit="s")
         df = biologic_processing(df)
 
     # arbin .res file - uses an sql server and requires mdbtools installed
