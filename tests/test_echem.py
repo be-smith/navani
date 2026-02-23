@@ -95,7 +95,7 @@ def test_mpr_reader():
         "../Example_data/jdb11-1_c3_gcpl_5cycles_2V-3p8V_C-24_data_C09.mpr"
     )
     df = ec.echem_file_loader(test_path)
-    assert df.shape == (46102, 18)
+    assert df.shape == (46102, 19)
 
     cols = (
         "state",
@@ -116,6 +116,7 @@ def test_mpr_reader():
         "control/V/mA",
         "I Range",
         "flags",
+        "timestamp",
     )
 
     assert set(cols) == set(df)
