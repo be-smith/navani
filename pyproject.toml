@@ -10,11 +10,10 @@ license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
     "numpy ~= 1.26, <2",
-    "pandas ~= 2.2, <3",
+    "pandas[excel] ~= 2.2, <3",
     "scipy ~= 1.15, <2",
     "datalab-org-galvani >= 0.5.0",
     "matplotlib ~=3.10, <4",
-    "openpyxl ~= 3.1, <4",
     "NewareNDA >= 2024.8.1",
     "requests ~= 2.32, <3",
 ]
