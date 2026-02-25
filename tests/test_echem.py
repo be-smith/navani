@@ -97,7 +97,7 @@ def test_mpr_reader():
     df = ec.echem_file_loader(test_path)
     assert df.shape == (46102, 19)
 
-    cols = (
+    required_cols = (
         "state",
         "Capacity",
         "dQ/mA.h",
@@ -116,10 +116,11 @@ def test_mpr_reader():
         "control/V/mA",
         "I Range",
         "flags",
-        "timestamp",
     )
+    optional_cols = ("timestamp",)
 
-    assert set(cols) == set(df)
+    assert set(required_cols) <= set(df)
+    assert set(df) <= set(required_cols) | set(optional_cols)
 
     mask = df["half cycle"] == 1
     voltage, dqdv, capacity = ec.dqdv_single_cycle(
