@@ -76,7 +76,10 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
             gal_file = MPRfile(f)
 
         df = pd.DataFrame(data=gal_file.data)
-        df["timestamp"] = gal_file.timestamp + pd.to_timedelta(df["time/s"], unit="s")
+        try:
+            df["timestamp"] = gal_file.timestamp + pd.to_timedelta(df["time/s"], unit="s")
+        except AttributeError as e:
+            print("No timestamp detected in galvani export")
         df = biologic_processing(df)
 
     # arbin .res file - uses an sql server and requires mdbtools installed
@@ -909,7 +912,7 @@ def multi_cycle_plot(df: pd.DataFrame, cycles: ArrayLike, colormap: str = 'virid
         mask = df['half cycle'] == cycle
         ax.plot(df['Capacity'][mask], df['Voltage'][mask], color=cm(norm(np.ceil(cycle/2))))
 
-    cbar = fig.colorbar(sm)
+    cbar = fig.colorbar(sm, ax=ax)
     cbar.set_label('Cycle', rotation=270, labelpad=10)
     ax.set_ylabel('Voltage / V')
     ax.set_xlabel('Capacity / mAh')
@@ -985,7 +988,7 @@ def multi_dqdv_plot(df: pd.DataFrame,
 
         ax.plot(voltage, dqdv, color=cm(norm(np.ceil(cycle/2))))
 
-    cbar = fig.colorbar(sm)
+    cbar = fig.colorbar(sm, ax=ax)
     cbar.set_label('Cycle', rotation=270, labelpad=10)
     ax.set_xlabel('Voltage / V')
     ax.set_ylabel('dQ/dV / $mAhV^{-1}$')
