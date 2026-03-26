@@ -27,6 +27,8 @@ def neware_reader_nda(filename: Union[str, Path], expected_capacity_unit: str = 
     # remap to expected navani columns and units (mAh, V, mA) Our Neware machine reports mAh in column name but is in fact Ah...
     df.set_index("Index", inplace=True)
     df.index.rename("index", inplace=True)
+    if "Step_Index" not in df.columns and "Step" in df.columns:
+        df.rename(columns={"Step": "Step_Index"}, inplace=True)
     if expected_capacity_unit == "Ah":
         df["Capacity"] = 1000 * (df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"])
     elif expected_capacity_unit == "mAh":
@@ -51,8 +53,8 @@ def neware_reader_nda(filename: Union[str, Path], expected_capacity_unit: str = 
         # Time stamp only records to the precision of a second, so we add the fractional seconds from the "Time" column to get a more accurate time column.
         # Initial Neware "Time" column is renamed to "Step Time / s" to reflect that it is the time within the current step, not the total time.
         df.rename(columns={"Time": "Step Time / s"}, inplace=True)
-        timestamp_seconds = (df["Timestamp"] - df["Timestamp"].iloc[0]).dt.total_seconds()
-        df["Time"] = timestamp_seconds + (df["Step Time / s"] % 1)
+        step_start_seconds = (df.groupby("Step_Index")["Timestamp"].transform("first") - df["Timestamp"].iloc[0]).dt.total_seconds()
+        df["Time"] = step_start_seconds + df["Step Time / s"]
     return df
 
 NEWARE_EXCEL_RECORD_COLUMNS = {
