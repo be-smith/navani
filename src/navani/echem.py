@@ -118,7 +118,7 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
         # Neware Excel exports have a lowercase 'record' sheet alongside 'unit', 'test', 'cycle' etc.
         if "record" in names_lower and "unit" in names_lower:
             from navani.neware import neware_reader_excel
-            df, _ = neware_reader_excel(filepath)
+            df, _ = neware_reader_excel(xlsx)
 
         # Use different land processing if all exported as one sheet (different versions of landdt software)
         elif len(names) == 1:
@@ -264,7 +264,7 @@ def multi_echem_file_loader(filepaths, mass=None, area=None):
     combined_df['cycle change'] = False
     # If the state changes, then it's a half cycle change
     combined_df.loc[not_rest_idx, 'cycle change'] = combined_df.loc[not_rest_idx, 'state'].ne(combined_df.loc[not_rest_idx, 'state'].shift())
-    combined_df['half cycle'] = (combined_df['cycle change'] == True).cumsum()
+    combined_df['half cycle'] = (combined_df['cycle change']).cumsum()
     # Adding a full cycle column
     combined_df['full cycle'] = (combined_df['half cycle']/2).apply(np.ceil)
 

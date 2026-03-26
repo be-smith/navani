@@ -34,7 +34,7 @@ def neware_reader_nda(filename: Union[str, Path], expected_capacity_unit: str = 
     elif expected_capacity_unit == "mAh":
         df["Capacity"] = df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"]
     else:
-        raise RuntimeError("Unexpected capacity unit: {expected_capacity_unit=}, should be one of 'mAh', 'Ah'.")
+        raise RuntimeError(f"Unexpected capacity unit: {expected_capacity_unit=}, should be one of 'mAh', 'Ah'.")
 
     df["Current"] = 1000 * df["Current(mA)"]
     df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
@@ -45,7 +45,7 @@ def neware_reader_nda(filename: Union[str, Path], expected_capacity_unit: str = 
     df['cycle change'] = False
     not_rest_idx = df[df['state'] != 'R'].index
     df.loc[not_rest_idx, 'cycle change'] = df.loc[not_rest_idx, 'state'].ne(df.loc[not_rest_idx, 'state'].shift())
-    df['half cycle'] = (df['cycle change'] == True).cumsum()
+    df['half cycle'] = (df['cycle change']).cumsum()
     if 'Time' not in df.columns:
         warnings.warn("Time column not found")
     elif 'Timestamp' in df.columns:
@@ -64,12 +64,15 @@ NEWARE_EXCEL_RECORD_COLUMNS = {
 }
 
 
-def neware_reader_excel(filename: Union[str, Path]) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+def neware_reader_excel(
+    filename: Union[str, Path, "pd.ExcelFile"],
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     """
     Read a Neware .xlsx file and return the record and test sheets as DataFrames.
 
     Args:
-        filename (Union[str, Path]): Path to the Neware .xlsx file.
+        filename: Path to the Neware .xlsx file, or an already-open ``pd.ExcelFile``
+            object (to avoid re-opening the file when the caller already has it open).
 
     Returns:
         tuple: A tuple of (df_record, df_test) where df_record is the 'record' sheet and
@@ -79,7 +82,7 @@ def neware_reader_excel(filename: Union[str, Path]) -> tuple[pd.DataFrame, pd.Da
         ValueError: If no 'record' sheet is found in the Excel file.
     """
 
-    with pd.ExcelFile(filename) as xls:
+    def _parse(xls: pd.ExcelFile) -> tuple[pd.DataFrame, pd.DataFrame | None]:
         sheet_names_lower = [s.lower() for s in xls.sheet_names]
         if "record" not in sheet_names_lower:
             raise ValueError(f"No 'record' sheet found. Available sheets: {xls.sheet_names}")
@@ -93,6 +96,13 @@ def neware_reader_excel(filename: Union[str, Path]) -> tuple[pd.DataFrame, pd.Da
             df_test = xls.parse(test_sheet)
         else:
             df_test = None
+        return df, df_test
+
+    if isinstance(filename, pd.ExcelFile):
+        df, df_test = _parse(filename)
+    else:
+        with pd.ExcelFile(filename) as xls:
+            df, df_test = _parse(xls)
 
     df.set_index("DataPoint", inplace=True)
 
