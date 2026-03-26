@@ -113,8 +113,15 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
             xlsx = pd.ExcelFile(os.path.join(filepath))
 
         names = xlsx.sheet_names
+        names_lower = [n.lower() for n in names]
+
+        # Neware Excel exports have a lowercase 'record' sheet alongside 'unit', 'test', 'cycle' etc.
+        if "record" in names_lower and "unit" in names_lower:
+            from navani.neware import neware_reader_excel
+            df, _ = neware_reader_excel(filepath)
+
         # Use different land processing if all exported as one sheet (different versions of landdt software)
-        if len(names) == 1:
+        elif len(names) == 1:
             df = xlsx.parse(0)
             df = new_land_processing(df)
 

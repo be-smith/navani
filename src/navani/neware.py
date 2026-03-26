@@ -93,4 +93,40 @@ def neware_reader_excel(filename: Union[str, Path]) -> tuple[pd.DataFrame, pd.Da
             df_test = xls.parse(test_sheet)
         else:
             df_test = None
+
+    df.set_index("DataPoint", inplace=True)
+
+    # Rename to navani standard columns
+    df.rename(columns={
+        "Voltage(V)": "Voltage",
+        "Current(mA)": "Current",
+        "Capacity(mAh)": "Capacity",
+        "Step Index": "Step_Index",
+        "Cycle Index": "Cycle_Index",
+        "Step Type": "Step_Type",
+    }, inplace=True)
+
+    # Continuous time in seconds from "Total Time" (HH:MM:SS string)
+    df["Time"] = pd.to_timedelta(df["Total Time"]).dt.total_seconds()
+
+    # Absolute timestamp from "Date" column
+    df["Timestamp"] = pd.to_datetime(df["Date"])
+
+    # State mapping: 'CC Chg' -> 0, 'CC DChg' -> 1, 'Rest' -> 'R'
+    df["state"] = pd.Categorical(
+        values=["unknown"] * len(df),
+        categories=["R", 1, 0, "unknown"],
+    )
+    df.loc[df["Step_Type"] == "Rest", "state"] = "R"
+    df.loc[df["Step_Type"] == "CC Chg", "state"] = 0
+    df.loc[df["Step_Type"] == "CC DChg", "state"] = 1
+
+    # Half cycle counting (ignoring rest rows)
+    df["cycle change"] = False
+    not_rest_idx = df[df["state"] != "R"].index
+    df.loc[not_rest_idx, "cycle change"] = df.loc[not_rest_idx, "state"].ne(
+        df.loc[not_rest_idx, "state"].shift()
+    )
+    df["half cycle"] = df["cycle change"].cumsum()
+
     return df, df_test
