@@ -106,11 +106,7 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
 
     # Landdt and Arbin can output .xlsx and .xls files
     elif filepath_lower.endswith(('.xlsx', '.xls')):
-        extension = os.path.splitext(filepath)[-1].lower()
-        if extension == '.xlsx':
-            xlsx = pd.ExcelFile(os.path.join(filepath), engine='openpyxl')
-        else:
-            xlsx = pd.ExcelFile(os.path.join(filepath))
+        xlsx = pd.ExcelFile(os.path.join(filepath), engine="calamine")
 
         names = xlsx.sheet_names
         names_lower = [n.lower() for n in names]
