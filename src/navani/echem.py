@@ -111,49 +111,56 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
         names = xlsx.sheet_names
         names_lower = [n.lower() for n in names]
 
+        df = None
+
+
         # Neware Excel exports have a lowercase 'record' sheet alongside 'unit', 'test', 'cycle' etc.
-        if "record" in names_lower and "unit" in names_lower:
+        if "record" in names_lower:
             from navani.neware import neware_reader_excel
-            df, _ = neware_reader_excel(xlsx)
+            try:
+                df, _ = neware_reader_excel(xlsx)
+            except ValueError as e:
+                # This may be a landdt file instead, so keep df as None and try landdt processing
+                pass
 
-        # Use different land processing if all exported as one sheet (different versions of landdt software)
-        elif len(names) == 1:
-            df = xlsx.parse(0)
-            df = new_land_processing(df)
+        if df is None:
+            if len(names) == 1:
+                df = xlsx.parse(0)
+                df = new_land_processing(df)
 
-        # If Record is a sheet name, then it is a landdt file
-        elif "Record" in names[0]:
-            df_list = [xlsx.parse(0)]
-            if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
-                raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
-            col_names = df_list[0].columns
+            # If Record is a sheet name, then it is a landdt file
+            elif "Record" in names[0]:
+                df_list = [xlsx.parse(0)]
+                if not isinstance(df_list, list) or not isinstance(df_list[0], pd.DataFrame):
+                    raise RuntimeError("First sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
+                col_names = df_list[0].columns
 
-            for sheet_name in names[1:]:
-                if "Record" in sheet_name:
-                    if len(xlsx.parse(sheet_name, header=None)) != 0:
-                        df_list.append(xlsx.parse(sheet_name, header=None))
-            for sheet in df_list:
-                if not isinstance(sheet, pd.DataFrame):
-                    raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
-                sheet.columns = col_names
-            df = pd.concat(df_list)
-            df.set_index('Index', inplace=True)
-            df = old_land_processing(df)
-
-        # If Channel is a sheet name, then it is an arbin file
-        else:
-            df_list = []
-            # Remove the Channel_Chart sheet if it exists as it's arbin's charting sheet
-            if 'Channel_Chart' in names:
-                names.remove('Channel_Chart')
-            for count, name in enumerate(names):
-                if 'Channel' in name and 'Chart' not in name:
-                    df_list.append(xlsx.parse(count))
-            if len(df_list) > 0:
+                for sheet_name in names[1:]:
+                    if "Record" in sheet_name:
+                        if len(xlsx.parse(sheet_name, header=None)) != 0:
+                            df_list.append(xlsx.parse(sheet_name, header=None))
+                for sheet in df_list:
+                    if not isinstance(sheet, pd.DataFrame):
+                        raise RuntimeError("Sheet is not a dataframe; cannot continue parsing {filepath=} as a Landdt export.")
+                    sheet.columns = col_names
                 df = pd.concat(df_list)
-                df = arbin_excel(df)
+                df.set_index('Index', inplace=True)
+                df = old_land_processing(df)
+
+            # If Channel is a sheet name, then it is an arbin file
             else:
-                raise ValueError('Sheet names not recognised as Arbin or Lanndt Excel exports, this file type is not supported.')
+                df_list = []
+                # Remove the Channel_Chart sheet if it exists as it's arbin's charting sheet
+                if 'Channel_Chart' in names:
+                    names.remove('Channel_Chart')
+                for count, name in enumerate(names):
+                    if 'Channel' in name and 'Chart' not in name:
+                        df_list.append(xlsx.parse(count))
+                if len(df_list) > 0:
+                    df = pd.concat(df_list)
+                    df = arbin_excel(df)
+                else:
+                    raise ValueError('Sheet names not recognised as Arbin, Neware or Lanndt Excel exports, this file type is not supported.')
 
     # Neware files are .nda or .ndax
     elif filepath_lower.endswith(('.nda', '.ndax')):
