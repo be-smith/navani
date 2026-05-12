@@ -94,7 +94,7 @@ def bdf_processing(df: pd.DataFrame) -> pd.DataFrame:
     # Create navani columns from BDF columns
     df['Time'] = df['Test Time / s']
     df['Voltage'] = df['Voltage / V']
-    df['Current'] = df['Current / A'] * 1000  # A -> mA
+    df['Current'] = df['Current / A'] / 1000  # A -> mA
 
     # Determine state from current direction
     def bdf_state(x: float):
@@ -159,7 +159,7 @@ def export_to_bdf(df: pd.DataFrame, save: bool = False, filepath: Optional[Union
     # Required: Test Time / s, Voltage / V, Current / A - note Current is converted from mA to A
     bdf_df['Test Time / s'] = bdf_df['Time']
     bdf_df['Voltage / V'] = bdf_df['Voltage']
-    bdf_df['Current / A'] = bdf_df['Current'] / 1000
+    bdf_df['Current / A'] = bdf_df['Current'] * 1000
 
     # Recommended: Cycle Count / 1
     if 'full cycle' in bdf_df.columns:
