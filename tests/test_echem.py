@@ -221,9 +221,9 @@ def test_ndax():
 
     assert all(c in df for c in cols), f"Some columns from {cols} were missing in {df.columns}"
 
-    assert np.testing.assert_almost_equal(df["Current"].max(), 0.12)
-    assert np.testing.assert_almost_equal(df["Current"].mean(), -0.00276)
-    assert np.testing.assert_almost_equal(df["Voltage"].max(), 4.3998)
+    np.testing.assert_almost_equal(df["Current"].max(), 0.12)
+    np.testing.assert_almost_equal(df["Current"].mean(), -0.00276)
+    np.testing.assert_almost_equal(df["Voltage"].max(), 4.3998)
     assert df.shape[0] == 1464
 
 @pytest.mark.parametrize("test_path", [
