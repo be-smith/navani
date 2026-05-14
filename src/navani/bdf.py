@@ -134,21 +134,96 @@ def bdf_processing(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def export_to_bdf(df: pd.DataFrame, save: bool = False, filepath: Optional[Union[str, Path]] = None) -> pd.DataFrame:
-    """
-    Export a navani DataFrame to Battery Data Format (BDF) CSV.
+_BDF_CANONICAL_COLUMNS: frozenset = frozenset(bdf_col_map.values())
 
-    All original columns are preserved in the output. BDF-standard columns are added
-    with appropriate unit conversions (mA -> A, mAh -> Ah).
+# Columns that benefit from float32 storage (measured/derived physical quantities).
+# Unix Time / s is intentionally excluded: current epoch values (~1.7e9 s) exceed float32
+# precision (~7 sig. figs), which would corrupt absolute timestamps to ~128 s granularity.
+_BDF_FLOAT32_COLUMNS: frozenset = frozenset({
+    'Test Time / s',
+    'Voltage / V',
+    'Current / A',
+    'Charging Capacity / Ah',
+    'Discharging Capacity / Ah',
+    'Step Capacity / Ah',
+    'Net Capacity / Ah',
+    'Cumulative Capacity / Ah',
+    'Charging Energy / Wh',
+    'Discharging Energy / Wh',
+    'Step Energy / Wh',
+    'Net Energy / Wh',
+    'Cumulative Energy / Wh',
+    'Power / W',
+    'Internal Resistance / Ohm',
+    'Ambient Pressure / Pa',
+    'Applied Pressure / Pa',
+    'Ambient Temperature / degC',
+    'Surface Temperature T1 / degC',
+    'Surface Temperature T2 / degC',
+    'Surface Temperature T3 / degC',
+    'Surface Temperature T4 / degC',
+    'Surface Temperature T5 / degC',
+})
+
+# Columns that are safely stored as int32 (counts never exceed ~2 billion).
+_BDF_INT32_COLUMNS: frozenset = frozenset({
+    'Cycle Count / 1',
+    'Step Index / 1',
+    'Step Count / 1',
+})
+
+
+def _downcast_bdf_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Downcast BDF numeric columns to float32/int32 in-place and return the DataFrame."""
+    for col in df.columns:
+        if col in _BDF_FLOAT32_COLUMNS and pd.api.types.is_float_dtype(df[col]):
+            df[col] = df[col].astype('float32')
+        elif col in _BDF_INT32_COLUMNS and pd.api.types.is_integer_dtype(df[col]):
+            df[col] = df[col].astype('int32')
+    return df
+
+
+def export_to_bdf(
+    df: pd.DataFrame,
+    bdf_only: bool = False,
+    filepath: Optional[Union[str, Path]] = None,
+    save_csv: bool = False,
+    save_parquet: bool = False,
+    parquet_compression: str = 'zstd',
+    # Legacy parameter kept for backwards compatibility
+    save: bool = False,
+) -> pd.DataFrame:
+    """
+    Export a navani DataFrame to Battery Data Format (BDF).
+
+    BDF-standard columns are added with appropriate unit conversions (mA -> A, mAh -> Ah).
+    Numeric columns are downcast to float32/int32 to reduce file size.
+
+    By default all original navani columns are preserved alongside the BDF columns.
+    Set ``bdf_only=True`` to return only BDF-standard columns, dropping navani-convention
+    duplicates (e.g. 'Time', 'Voltage', 'Current', 'Capacity', 'state'). This reduces file
+    size by ~50-60% and is recommended when saving; navani columns are reconstructed on load
+    via ``bdf_processing()``.
 
     Args:
         df (pandas.DataFrame): A navani-processed DataFrame (from echem_file_loader).
-        save (bool): Whether to save the DataFrame to a CSV file.
-        filepath (Union[str, Path]): Output file path. Should end with .bdf.
+        bdf_only (bool): If True, return only BDF-standard columns (drop navani duplicates).
+            Automatically set to True when save_csv or save_parquet is True.
+        filepath (str or Path): Stem path for output files. The appropriate extension
+            (.bdf.csv or .bdf.parquet) is appended based on save_csv and save_parquet.
+            Required if save_csv or save_parquet is True.
+        save_csv (bool): If True, save the BDF DataFrame as a CSV file at ``filepath.bdf.csv``.
+        save_parquet (bool): If True, save the BDF DataFrame as a compressed parquet file at
+            ``filepath.bdf.parquet``. Requires pyarrow.
+        parquet_compression (str): Parquet compression codec. Defaults to 'zstd'.
+        save (bool): Deprecated. Use save_csv=True with filepath instead.
 
     Returns:
-        bdf_df (pandas.DataFrame): The DataFrame with BDF columns added.
+        bdf_df (pandas.DataFrame): The DataFrame with BDF columns, navani-only columns dropped
+            if bdf_only=True or any save flag is True.
     """
+    if (save_csv or save_parquet) and filepath is None:
+        raise ValueError('filepath must be provided when save_csv or save_parquet is True.')
     bdf_df = df.copy()
 
     required_columns = {'Time', 'Voltage', 'Current'}
@@ -192,8 +267,33 @@ def export_to_bdf(df: pd.DataFrame, save: bool = False, filepath: Optional[Union
         bdf_df.loc[charge_mask, 'Charging Capacity / Ah'] = bdf_df.loc[charge_mask, 'Capacity'] / 1000
         bdf_df.loc[discharge_mask, 'Discharging Capacity / Ah'] = bdf_df.loc[discharge_mask, 'Capacity'] / 1000
 
-    # Optionally save to csv file with specified filepath
-    if save:
+    if bdf_only or save_csv or save_parquet:
+        bdf_cols = [c for c in bdf_df.columns if c in _BDF_CANONICAL_COLUMNS]
+        bdf_df = bdf_df[bdf_cols]
+
+    _downcast_bdf_columns(bdf_df)
+
+    if save_csv or save_parquet:
+        stem = Path(filepath)
+        # Strip any existing .bdf.* extension so callers can pass either a bare stem or a full path
+        while stem.suffix in ('.csv', '.parquet', '.gz', '.bdf'):
+            stem = stem.with_suffix('')
+
+    if save_csv:
+        bdf_df.to_csv(stem.parent / (stem.name + '.bdf.csv'), index=False)
+
+    if save_parquet:
+        try:
+            import pyarrow  # noqa: F401
+        except ImportError:
+            raise ImportError(
+                'Writing .bdf.parquet files requires pyarrow. '
+                'Install it with: pip install navani[parquet]'
+            )
+        bdf_df.to_parquet(stem.parent / (stem.name + '.bdf.parquet'), index=False, compression=parquet_compression)
+
+    # Legacy save=True/filepath support
+    if save and filepath is not None:
         bdf_df.to_csv(filepath, index=False)
 
     return bdf_df
