@@ -415,6 +415,7 @@ def test_export_to_bdf_parquet(filename, tmp_path):
     import pandas as pd
     import numpy as np
 
+    pytest.importorskip("pyarrow")
     df = ec.echem_file_loader(EXAMPLE_DATA / filename)
     parquet_path = tmp_path / "test"
     export_to_bdf(df, filepath=parquet_path, save_parquet=True)
