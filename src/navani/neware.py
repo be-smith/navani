@@ -36,7 +36,7 @@ def neware_reader_nda(filename: Union[str, Path], expected_capacity_unit: str = 
     else:
         raise RuntimeError(f"Unexpected capacity unit: {expected_capacity_unit=}, should be one of 'mAh', 'Ah'.")
 
-    df["Current"] = 1000 * df["Current(mA)"]
+    df["Current"] = df["Current(mA)"]
     df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
     df.loc[df["Status"] == "Rest", "state"] = "R"
     df.loc[df["Status"] == "CC_Chg", "state"] = 0
