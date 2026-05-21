@@ -1,7 +1,7 @@
 import pathlib
 
 import pytest
-from navani.bdf import export_to_bdf, _BDF_CANONICAL_COLUMNS
+from navani.bdf import build_bdf_df, export_to_bdf, save_bdf, _BDF_CANONICAL_COLUMNS
 
 EXAMPLE_DATA = pathlib.Path(__file__).parent.parent / "Example_data"
 
@@ -312,97 +312,57 @@ ALL_EXAMPLE_FILES = [
 ]
 
 
-@pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
-def test_bdf_export_round_trip(filename, tmp_path):
-    """Test exporting each format to BDF and re-importing gives consistent data."""
-    import navani.echem as ec
-    import numpy as np
-
-    df_original = ec.echem_file_loader(EXAMPLE_DATA / filename)
-
-    export_to_bdf(df_original, filepath=tmp_path / "export", save_csv=True)
-    bdf_path = tmp_path / "export.bdf.csv"
-
-    df_reimported = ec.echem_file_loader(bdf_path)
-
-    expected_cols = ("state", "cycle change", "half cycle", "Capacity", "Voltage", "Current", "full cycle")
-    assert all(c in df_reimported for c in expected_cols)
-
-    # Voltage should survive unchanged
-    np.testing.assert_array_almost_equal(
-        df_original['Voltage'].values,
-        df_reimported['Voltage'].values,
-        decimal=5,
-    )
-
-    # Current should survive the round trip (mA -> A -> mA)
-    np.testing.assert_array_almost_equal(
-        df_original['Current'].values,
-        df_reimported['Current'].values,
-        decimal=3,
-    )
+_NAVANI_COLS = {'Time', 'Voltage', 'Current', 'Capacity', 'state', 'half cycle', 'full cycle', 'cycle change'}
+_BDF_REQUIRED = {'Test Time / s', 'Voltage / V', 'Current / A'}
 
 
 @pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
-def test_bdf_export_has_required_columns(filename, tmp_path):
-    """Test that BDF export contains all required and recommended BDF columns."""
+def test_build_bdf_df_has_required_columns(filename):
+    """Test that build_bdf_df returns all required and recommended BDF columns."""
     import navani.echem as ec
-    import pandas as pd
 
     df = ec.echem_file_loader(EXAMPLE_DATA / filename)
+    bdf_df = build_bdf_df(df)
 
-    export_to_bdf(df, filepath=tmp_path / "export", save_csv=True)
-    bdf_df = pd.read_csv(tmp_path / "export.bdf.csv")
-    # BDF required
-    assert 'Test Time / s' in bdf_df.columns
-    assert 'Voltage / V' in bdf_df.columns
-    assert 'Current / A' in bdf_df.columns
-    # BDF recommended
+    assert _BDF_REQUIRED.issubset(bdf_df.columns)
     assert 'Cycle Count / 1' in bdf_df.columns
     assert 'Step Count / 1' in bdf_df.columns
 
 
 @pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
-def test_bdf_export_step_count_is_numeric(filename, tmp_path):
-    """Test that Step Count / 1 is always numeric in the exported BDF."""
+def test_build_bdf_df_drops_navani_columns(filename):
+    """Test that build_bdf_df returns only BDF-standard columns."""
     import navani.echem as ec
-    import pandas as pd
+
+    df = ec.echem_file_loader(EXAMPLE_DATA / filename)
+    bdf_df = build_bdf_df(df)
+
+    assert not _NAVANI_COLS.intersection(bdf_df.columns), (
+        f"navani columns found in build_bdf_df output: {_NAVANI_COLS.intersection(bdf_df.columns)}"
+    )
+    assert set(bdf_df.columns).issubset(_BDF_CANONICAL_COLUMNS)
+
+
+@pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
+def test_build_bdf_df_step_count_is_numeric(filename):
+    """Test that Step Count / 1 is always numeric in the BDF DataFrame."""
+    import navani.echem as ec
     import numpy as np
 
     df = ec.echem_file_loader(EXAMPLE_DATA / filename)
-
-    export_to_bdf(df, filepath=tmp_path / "export", save_csv=True)
-    bdf_df = pd.read_csv(tmp_path / "export.bdf.csv")
+    bdf_df = build_bdf_df(df)
     assert np.issubdtype(bdf_df['Step Count / 1'].dtype, np.number)
 
 
 @pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
-def test_bdf_export_bdf_only_drops_navani_columns(filename):
-    """Test that bdf_only=True returns only BDF-standard columns."""
-    import navani.echem as ec
-
-    df = ec.echem_file_loader(EXAMPLE_DATA / filename)
-    bdf_df = export_to_bdf(df, bdf_only=True)
-
-    navani_cols = {'Time', 'Voltage', 'Current', 'Capacity', 'state', 'half cycle', 'full cycle', 'cycle change'}
-    assert not navani_cols.intersection(bdf_df.columns), (
-        f"navani columns found in bdf_only output: {navani_cols.intersection(bdf_df.columns)}"
-    )
-    assert set(bdf_df.columns).issubset(_BDF_CANONICAL_COLUMNS)
-    assert {'Test Time / s', 'Voltage / V', 'Current / A'}.issubset(bdf_df.columns)
-
-
-@pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
-def test_bdf_export_bdf_only_round_trip(filename):
-    """Test that a bdf_only export round-trips correctly through bdf_processing."""
+def test_build_bdf_df_round_trip(filename):
+    """Test that build_bdf_df output round-trips correctly through bdf_processing."""
     import navani.echem as ec
     import numpy as np
+    from navani.bdf import bdf_processing
 
     df_original = ec.echem_file_loader(EXAMPLE_DATA / filename)
-    bdf_df = export_to_bdf(df_original, bdf_only=True)
-
-    # bdf_processing reconstructs navani columns from BDF columns
-    from navani.bdf import bdf_processing
+    bdf_df = build_bdf_df(df_original)
     df_reconstructed = bdf_processing(bdf_df.copy())
 
     np.testing.assert_array_almost_equal(
@@ -415,37 +375,96 @@ def test_bdf_export_bdf_only_round_trip(filename):
 
 
 @pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
-def test_export_to_bdf_parquet(filename, tmp_path):
-    """Test that export_to_bdf_parquet writes a readable parquet with BDF-only columns and reduced dtypes."""
+def test_save_bdf_csv_round_trip(filename, tmp_path):
+    """Test saving to CSV and re-importing gives consistent data."""
+    import navani.echem as ec
+    import numpy as np
+
+    df_original = ec.echem_file_loader(EXAMPLE_DATA / filename)
+    bdf_df = build_bdf_df(df_original)
+    csv_path = tmp_path / "export.bdf.csv"
+    save_bdf(bdf_df, csv_path=csv_path)
+
+    assert csv_path.exists()
+    df_reimported = ec.echem_file_loader(csv_path)
+
+    expected_cols = ("state", "cycle change", "half cycle", "Capacity", "Voltage", "Current", "full cycle")
+    assert all(c in df_reimported for c in expected_cols)
+    np.testing.assert_array_almost_equal(
+        df_original['Voltage'].values, df_reimported['Voltage'].values, decimal=5,
+    )
+    np.testing.assert_array_almost_equal(
+        df_original['Current'].values, df_reimported['Current'].values, decimal=3,
+    )
+
+
+@pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
+def test_save_bdf_parquet(filename, tmp_path):
+    """Test that save_bdf writes a readable parquet with BDF-only columns and reduced dtypes."""
     import navani.echem as ec
     import pandas as pd
     import numpy as np
 
     pytest.importorskip("pyarrow")
     df = ec.echem_file_loader(EXAMPLE_DATA / filename)
-    parquet_path = tmp_path / "test"
-    export_to_bdf(df, filepath=parquet_path, save_parquet=True)
+    bdf_df = build_bdf_df(df)
     parquet_path = tmp_path / "test.bdf.parquet"
+    save_bdf(bdf_df, parquet_path=parquet_path)
 
     assert parquet_path.exists()
     cached = pd.read_parquet(parquet_path)
 
-    # Only BDF columns
     assert set(cached.columns).issubset(_BDF_CANONICAL_COLUMNS)
-    assert {'Test Time / s', 'Voltage / V', 'Current / A'}.issubset(cached.columns)
-    navani_cols = {'Time', 'Voltage', 'Current', 'Capacity', 'state'}
-    assert not navani_cols.intersection(cached.columns)
-
-    # Dtype downcasting applied
+    assert _BDF_REQUIRED.issubset(cached.columns)
+    assert not {'Time', 'Voltage', 'Current', 'Capacity', 'state'}.intersection(cached.columns)
     assert cached['Voltage / V'].dtype == np.float32
     assert cached['Current / A'].dtype == np.float32
 
-    # Round-trips correctly via echem_file_loader
     df_loaded = ec.echem_file_loader(parquet_path)
     np.testing.assert_array_almost_equal(
         df['Voltage'].values, df_loaded['Voltage'].values, decimal=4
     )
     assert len(df_loaded) == len(df)
+
+
+@pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
+def test_save_bdf_csv_and_parquet_together(filename, tmp_path):
+    """Test that save_bdf can write both CSV and parquet in a single call."""
+    import navani.echem as ec
+    import pandas as pd
+
+    pytest.importorskip("pyarrow")
+    df = ec.echem_file_loader(EXAMPLE_DATA / filename)
+    bdf_df = build_bdf_df(df)
+    csv_path = tmp_path / "export.bdf.csv"
+    parquet_path = tmp_path / "export.bdf.parquet"
+    save_bdf(bdf_df, parquet_path=parquet_path, csv_path=csv_path)
+
+    assert csv_path.exists()
+    assert parquet_path.exists()
+    csv_cols = set(pd.read_csv(csv_path).columns)
+    parquet_cols = set(pd.read_parquet(parquet_path).columns)
+    assert csv_cols == parquet_cols
+    assert _BDF_REQUIRED.issubset(csv_cols)
+
+
+def test_export_to_bdf_backwards_compat(tmp_path):
+    """Smoke test that export_to_bdf still works as a backwards-compat wrapper."""
+    import navani.echem as ec
+    import pandas as pd
+
+    pytest.importorskip("pyarrow")
+    df = ec.echem_file_loader(EXAMPLE_DATA / "example_output.csv")
+
+    export_to_bdf(df, filepath=tmp_path / "export", save_csv=True, save_parquet=True)
+    assert (tmp_path / "export.bdf.csv").exists()
+    assert (tmp_path / "export.bdf.parquet").exists()
+
+    bdf_only_df = export_to_bdf(df, bdf_only=True)
+    assert set(bdf_only_df.columns).issubset(_BDF_CANONICAL_COLUMNS)
+
+    bdf_df_with_navani = export_to_bdf(df)
+    assert {'Time', 'Voltage', 'Current'}.issubset(bdf_df_with_navani.columns)
 
 
 # ---------------------------------------------------------------------------
@@ -478,15 +497,15 @@ def test_local_files_bdf_round_trip(filepath, tmp_path):
 
     df_original = ec.echem_file_loader(filepath)
 
-    bdf_only_df = export_to_bdf(df_original, bdf_only=True)
-    navani_cols = {'Time', 'Voltage', 'Current', 'Capacity', 'state', 'half cycle', 'full cycle', 'cycle change'}
-    assert not navani_cols.intersection(bdf_only_df.columns), (
-        f"navani columns found in bdf_only output: {navani_cols.intersection(bdf_only_df.columns)}"
+    bdf_df = build_bdf_df(df_original)
+    assert not _NAVANI_COLS.intersection(bdf_df.columns), (
+        f"navani columns found in build_bdf_df output: {_NAVANI_COLS.intersection(bdf_df.columns)}"
     )
-    assert set(bdf_only_df.columns).issubset(_BDF_CANONICAL_COLUMNS)
+    assert set(bdf_df.columns).issubset(_BDF_CANONICAL_COLUMNS)
 
-    export_to_bdf(df_original, filepath=tmp_path / "export", save_csv=True)
-    df_reimported = ec.echem_file_loader(tmp_path / "export.bdf.csv")
+    csv_path = tmp_path / "export.bdf.csv"
+    save_bdf(bdf_df, csv_path=csv_path)
+    df_reimported = ec.echem_file_loader(csv_path)
 
     expected_cols = ("state", "cycle change", "half cycle", "Capacity", "Voltage", "Current", "full cycle")
     assert all(c in df_reimported for c in expected_cols)
