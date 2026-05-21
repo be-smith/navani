@@ -4,37 +4,26 @@ from typing import Union
 from pathlib import Path
 
 
-def neware_reader_nda(filename: Union[str, Path], expected_capacity_unit: str = "mAh") -> pd.DataFrame:
+def neware_reader_nda(filename: Union[str, Path]) -> pd.DataFrame:
     """
     Read and process a Neware .nda or .ndax file into a navani-compatible DataFrame.
 
     Args:
         filename (Union[str, Path]): Path to the Neware .nda or .ndax file.
-        expected_capacity_unit (str, optional): The unit that the instrument actually writes capacity in.
-            Even if the column name says "mAh", some Neware machines write Ah. Defaults to "mAh".
 
     Returns:
         pandas.DataFrame: The processed DataFrame with navani standard columns (Capacity, Current, state,
             half cycle, cycle change).
-
-    Raises:
-        RuntimeError: If expected_capacity_unit is not one of "mAh" or "Ah".
     """
     from NewareNDA.NewareNDA import read
     filename = str(filename)
     df = read(filename)
 
-    # remap to expected navani columns and units (mAh, V, mA) Our Neware machine reports mAh in column name but is in fact Ah...
     df.set_index("Index", inplace=True)
     df.index.rename("index", inplace=True)
     if "Step_Index" not in df.columns and "Step" in df.columns:
         df.rename(columns={"Step": "Step_Index"}, inplace=True)
-    if expected_capacity_unit == "Ah":
-        df["Capacity"] = 1000 * (df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"])
-    elif expected_capacity_unit == "mAh":
-        df["Capacity"] = df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"]
-    else:
-        raise RuntimeError(f"Unexpected capacity unit: {expected_capacity_unit=}, should be one of 'mAh', 'Ah'.")
+    df["Capacity"] = df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"]
 
     df["Current"] = df["Current(mA)"]
     df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
@@ -57,11 +46,14 @@ def neware_reader_nda(filename: Union[str, Path], expected_capacity_unit: str = 
         df["Time"] = step_start_seconds + df["Step Time / s"]
     return df
 
-NEWARE_EXCEL_RECORD_COLUMNS = {
+# Columns always expected in the record sheet regardless of variant
+_NEWARE_EXCEL_REQUIRED_COLUMNS = {
     "DataPoint", "Cycle Index", "Step Index", "Step Type", "Time", "Total Time",
-    "Current(mA)", "Voltage(V)", "Capacity(mAh)", "Chg. Cap.(mAh)", "DChg. Cap.(mAh)",
-    "Energy(Wh)", "Date", "Power(W)",
+    "Voltage(V)", "Capacity(mAh)", "Energy(Wh)", "Date",
 }
+
+_NEWARE_CHARGE_STEP_TYPES = {"CC Chg", "CCCV Chg", "CV Chg"}
+_NEWARE_DISCHARGE_STEP_TYPES = {"CC DChg", "CCCV DChg", "CV DChg"}
 
 
 def neware_reader_excel(
@@ -69,6 +61,11 @@ def neware_reader_excel(
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     """
     Read a Neware .xlsx file and return the record and test sheets as DataFrames.
+
+    Supports two current/capacity column variants:
+    - Standard: ``Current(mA)``, ``Chg. Cap.(mAh)``, ``DChg. Cap.(mAh)``
+    - Mass-normalised: ``Current(A)``, ``Chg. Spec. Cap.(mAh/g)``, ``DChg. Spec. Cap.(mAh/g)``
+      (exported when the user specifies active-material mass in Neware)
 
     Args:
         filename: Path to the Neware .xlsx file, or an already-open ``pd.ExcelFile``
@@ -79,7 +76,7 @@ def neware_reader_excel(
             df_test is the 'test' sheet, or None if the 'test' sheet is not present.
 
     Raises:
-        ValueError: If no 'record' sheet is found in the Excel file.
+        ValueError: If no 'record' sheet is found, or required columns are missing.
     """
 
     def _parse(xls: pd.ExcelFile) -> tuple[pd.DataFrame, pd.DataFrame | None]:
@@ -88,9 +85,14 @@ def neware_reader_excel(
             raise ValueError(f"No 'record' sheet found. Available sheets: {xls.sheet_names}")
         record_sheet = xls.sheet_names[sheet_names_lower.index("record")]
         df = xls.parse(record_sheet)
-        missing = NEWARE_EXCEL_RECORD_COLUMNS - set(df.columns)
+        cols = set(df.columns)
+        missing = _NEWARE_EXCEL_REQUIRED_COLUMNS - cols
         if missing:
             raise ValueError(f"Record sheet is missing expected columns: {missing}")
+        has_current_ma = "Current(mA)" in cols
+        has_current_a = "Current(A)" in cols
+        if not has_current_ma and not has_current_a:
+            raise ValueError("Record sheet has neither 'Current(mA)' nor 'Current(A)' column.")
         if "test" in sheet_names_lower:
             test_sheet = xls.sheet_names[sheet_names_lower.index("test")]
             df_test = xls.parse(test_sheet)
@@ -106,10 +108,15 @@ def neware_reader_excel(
 
     df.set_index("DataPoint", inplace=True)
 
-    # Rename to navani standard columns
+    # Handle current column: standard mA variant or A variant (convert to mA)
+    if "Current(mA)" in df.columns:
+        df.rename(columns={"Current(mA)": "Current"}, inplace=True)
+    else:
+        df["Current"] = df["Current(A)"] * 1000
+
+    # Rename remaining standard columns
     df.rename(columns={
         "Voltage(V)": "Voltage",
-        "Current(mA)": "Current",
         "Capacity(mAh)": "Capacity",
         "Step Index": "Step_Index",
         "Cycle Index": "Cycle_Index",
@@ -122,14 +129,14 @@ def neware_reader_excel(
     # Absolute timestamp from "Date" column
     df["Timestamp"] = pd.to_datetime(df["Date"])
 
-    # State mapping: 'CC Chg' -> 0, 'CC DChg' -> 1, 'Rest' -> 'R'
+    # State mapping: charge step types -> 0, discharge -> 1, rest -> 'R'
     df["state"] = pd.Categorical(
         values=["unknown"] * len(df),
         categories=["R", 1, 0, "unknown"],
     )
     df.loc[df["Step_Type"] == "Rest", "state"] = "R"
-    df.loc[df["Step_Type"] == "CC Chg", "state"] = 0
-    df.loc[df["Step_Type"] == "CC DChg", "state"] = 1
+    df.loc[df["Step_Type"].isin(_NEWARE_CHARGE_STEP_TYPES), "state"] = 0
+    df.loc[df["Step_Type"].isin(_NEWARE_DISCHARGE_STEP_TYPES), "state"] = 1
 
     # Half cycle counting (ignoring rest rows)
     df["cycle change"] = False

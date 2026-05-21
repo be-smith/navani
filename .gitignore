@@ -132,3 +132,7 @@ dmypy.json
 # VS Code settings
 .vscode/settings.json
 navani_testing.code-workspace
+
+# Local data directory
+example_data/local
+Example_data/local
