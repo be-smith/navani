@@ -446,3 +446,59 @@ def test_export_to_bdf_parquet(filename, tmp_path):
         df['Voltage'].values, df_loaded['Voltage'].values, decimal=4
     )
     assert len(df_loaded) == len(df)
+
+
+# ---------------------------------------------------------------------------
+# Local-only tests — require private files in Example_data/local/ (gitignored).
+# Tests are skipped automatically if that directory is absent.
+# ---------------------------------------------------------------------------
+
+LOCAL_DATA = EXAMPLE_DATA / "local"
+LOCAL_FILES = [p for p in LOCAL_DATA.iterdir() if p.is_file()] if LOCAL_DATA.is_dir() else []
+
+
+@pytest.mark.local_data
+@pytest.mark.parametrize("filepath", LOCAL_FILES, ids=[p.name for p in LOCAL_FILES])
+def test_local_files_load(filepath):
+    """Smoke-test that private echem files load and produce non-empty output."""
+    import navani.echem as ec
+
+    df = ec.echem_file_loader(filepath)
+    assert df.shape[0] > 0
+    assert {"Voltage", "Current", "Capacity", "state", "half cycle"}.issubset(df.columns)
+    assert (df["state"] == "unknown").sum() == 0
+
+
+@pytest.mark.local_data
+@pytest.mark.parametrize("filepath", LOCAL_FILES, ids=[p.name for p in LOCAL_FILES])
+def test_local_files_bdf_round_trip(filepath, tmp_path):
+    """Load each private file, export to BDF, reload and check Voltage/Current/state survive."""
+    import navani.echem as ec
+    import numpy as np
+
+    df_original = ec.echem_file_loader(filepath)
+
+    bdf_only_df = export_to_bdf(df_original, bdf_only=True)
+    navani_cols = {'Time', 'Voltage', 'Current', 'Capacity', 'state', 'half cycle', 'full cycle', 'cycle change'}
+    assert not navani_cols.intersection(bdf_only_df.columns), (
+        f"navani columns found in bdf_only output: {navani_cols.intersection(bdf_only_df.columns)}"
+    )
+    assert set(bdf_only_df.columns).issubset(_BDF_CANONICAL_COLUMNS)
+
+    export_to_bdf(df_original, filepath=tmp_path / "export", save_csv=True)
+    df_reimported = ec.echem_file_loader(tmp_path / "export.bdf.csv")
+
+    expected_cols = ("state", "cycle change", "half cycle", "Capacity", "Voltage", "Current", "full cycle")
+    assert all(c in df_reimported for c in expected_cols)
+
+    np.testing.assert_array_almost_equal(
+        df_original["Voltage"].values,
+        df_reimported["Voltage"].values,
+        decimal=5,
+    )
+    np.testing.assert_array_almost_equal(
+        df_original["Current"].values,
+        df_reimported["Current"].values,
+        decimal=3,
+    )
+    assert (df_reimported["state"] == "unknown").sum() == 0
