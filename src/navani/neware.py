@@ -52,6 +52,9 @@ _NEWARE_EXCEL_REQUIRED_COLUMNS = {
     "Voltage(V)", "Capacity(mAh)", "Energy(Wh)", "Date",
 }
 
+_NEWARE_CHARGE_STEP_TYPES = {"CC Chg", "CCCV Chg", "CV Chg"}
+_NEWARE_DISCHARGE_STEP_TYPES = {"CC DChg", "CCCV DChg", "CV DChg"}
+
 
 def neware_reader_excel(
     filename: Union[str, Path, "pd.ExcelFile"],
@@ -131,11 +134,9 @@ def neware_reader_excel(
         values=["unknown"] * len(df),
         categories=["R", 1, 0, "unknown"],
     )
-    _charge_types = {"CC Chg", "CCCV Chg", "CV Chg"}
-    _discharge_types = {"CC DChg", "CCCV DChg", "CV DChg"}
     df.loc[df["Step_Type"] == "Rest", "state"] = "R"
-    df.loc[df["Step_Type"].isin(_charge_types), "state"] = 0
-    df.loc[df["Step_Type"].isin(_discharge_types), "state"] = 1
+    df.loc[df["Step_Type"].isin(_NEWARE_CHARGE_STEP_TYPES), "state"] = 0
+    df.loc[df["Step_Type"].isin(_NEWARE_DISCHARGE_STEP_TYPES), "state"] = 1
 
     # Half cycle counting (ignoring rest rows)
     df["cycle change"] = False
