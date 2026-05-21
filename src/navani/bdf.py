@@ -183,6 +183,103 @@ def _downcast_bdf_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def build_bdf_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build a BDF-standard DataFrame from a navani-processed DataFrame.
+
+    BDF-standard columns are added with appropriate unit conversions (mA -> A, mAh -> Ah),
+    navani-only duplicate columns are dropped, and numeric columns are downcast to
+    float32/int32 to reduce file size.
+
+    Args:
+        df (pandas.DataFrame): A navani-processed DataFrame (from echem_file_loader).
+
+    Returns:
+        pd.DataFrame: A new DataFrame containing only BDF-standard columns.
+
+    Raises:
+        ValueError: If required navani columns (Time, Voltage, Current) are missing.
+    """
+    required_columns = {'Time', 'Voltage', 'Current'}
+    missing = required_columns - set(df.columns)
+    if missing:
+        raise ValueError(f'Input DataFrame missing required columns for BDF export: {missing}')
+
+    bdf_df = df.copy()
+
+    # Required: Test Time / s, Voltage / V, Current / A - note Current is converted from mA to A
+    bdf_df['Test Time / s'] = bdf_df['Time']
+    bdf_df['Voltage / V'] = bdf_df['Voltage']
+    bdf_df['Current / A'] = bdf_df['Current'] / 1000
+
+    # Recommended: Cycle Count / 1
+    if 'full cycle' in bdf_df.columns:
+        bdf_df['Cycle Count / 1'] = bdf_df['full cycle']
+
+    # Optional: Step Index / 1 - prioritise existing step index columns, then landdt state, then state
+    step_col = None
+    for col_name in step_index_columns:
+        if col_name in bdf_df.columns:
+            step_col = col_name
+            break
+    if step_col is not None:
+        bdf_df['Step Index / 1'] = bdf_df[step_col]
+    elif landdt_step_column in bdf_df.columns and bdf_df[landdt_step_column].dtype == object:
+        bdf_df['Step Index / 1'] = bdf_df[landdt_step_column].astype('category').cat.codes
+    elif 'state' in bdf_df.columns:
+        bdf_df['Step Index / 1'] = bdf_df['state'].astype('category').cat.codes
+
+    # Recommended: Step Count / 1 - increases each time Step Index / 1 changes
+    if 'Step Index / 1' in bdf_df.columns:
+        bdf_df['Step Count / 1'] = (bdf_df['Step Index / 1'] != bdf_df['Step Index / 1'].shift()).cumsum()
+
+    # Optional: Charging and Discharging Capacity / Ah (mAh -> Ah)
+    if 'Capacity' in bdf_df.columns and 'state' in bdf_df.columns:
+        bdf_df['Charging Capacity / Ah'] = 0.0
+        bdf_df['Discharging Capacity / Ah'] = 0.0
+        charge_mask = bdf_df['state'] == 0
+        discharge_mask = bdf_df['state'] == 1
+        bdf_df.loc[charge_mask, 'Charging Capacity / Ah'] = bdf_df.loc[charge_mask, 'Capacity'] / 1000
+        bdf_df.loc[discharge_mask, 'Discharging Capacity / Ah'] = bdf_df.loc[discharge_mask, 'Capacity'] / 1000
+
+    bdf_cols = [c for c in bdf_df.columns if c in _BDF_CANONICAL_COLUMNS]
+    bdf_df = bdf_df[bdf_cols]
+    _downcast_bdf_columns(bdf_df)
+    return bdf_df
+
+
+def save_bdf(
+    bdf_df: pd.DataFrame,
+    parquet_path: Optional[Union[str, Path]] = None,
+    csv_path: Optional[Union[str, Path]] = None,
+    parquet_compression: str = 'zstd',
+) -> None:
+    """
+    Save a BDF DataFrame (from build_bdf_df) to parquet and/or CSV.
+
+    Args:
+        bdf_df (pd.DataFrame): A BDF-standard DataFrame as returned by build_bdf_df.
+        parquet_path (str or Path): Full output path for the .bdf.parquet file, or None to skip.
+        csv_path (str or Path): Full output path for the .bdf.csv file, or None to skip.
+        parquet_compression (str): Parquet compression codec. Defaults to 'zstd'.
+
+    Raises:
+        ImportError: If pyarrow is not installed and parquet_path is provided.
+    """
+    if parquet_path is not None:
+        try:
+            import pyarrow  # noqa: F401
+        except ImportError:
+            raise ImportError(
+                'Writing .bdf.parquet files requires pyarrow. '
+                'Install it with: pip install navani[parquet]'
+            )
+        bdf_df.to_parquet(parquet_path, index=False, compression=parquet_compression)
+
+    if csv_path is not None:
+        bdf_df.to_csv(csv_path, index=False)
+
+
 def export_to_bdf(
     df: pd.DataFrame,
     bdf_only: bool = False,
@@ -195,6 +292,8 @@ def export_to_bdf(
 ) -> pd.DataFrame:
     """
     Export a navani DataFrame to Battery Data Format (BDF).
+
+    Deprecated: use build_bdf_df() and save_bdf() instead.
 
     BDF-standard columns are added with appropriate unit conversions (mA -> A, mAh -> Ah).
     Numeric columns are downcast to float32/int32 to reduce file size.
@@ -224,76 +323,30 @@ def export_to_bdf(
     """
     if (save_csv or save_parquet) and filepath is None:
         raise ValueError('filepath must be provided when save_csv or save_parquet is True.')
-    bdf_df = df.copy()
 
-    required_columns = {'Time', 'Voltage', 'Current'}
-    missing = required_columns - set(bdf_df.columns)
-    if missing:
-        raise ValueError(f'Input DataFrame missing required columns for BDF export: {missing}')
-
-    # Required: Test Time / s, Voltage / V, Current / A - note Current is converted from mA to A
-    bdf_df['Test Time / s'] = bdf_df['Time']
-    bdf_df['Voltage / V'] = bdf_df['Voltage']
-    bdf_df['Current / A'] = bdf_df['Current'] / 1000
-
-    # Recommended: Cycle Count / 1
-    if 'full cycle' in bdf_df.columns:
-        bdf_df['Cycle Count / 1'] = bdf_df['full cycle']
-
-    # Optional: Step Index / 1 - try to find a suitable column for this, prioritising existing step index columns, then landdt state column, then state column
-    step_col = None
-    for col_name in step_index_columns:
-        if col_name in bdf_df.columns:
-            step_col = col_name
-            break
-    if step_col is not None:
-        bdf_df['Step Index / 1'] = bdf_df[step_col]
-    # Landdt uses a string "State" column - encode unique strings as integers
-    elif landdt_step_column in bdf_df.columns and bdf_df[landdt_step_column].dtype == object:
-        bdf_df['Step Index / 1'] = bdf_df[landdt_step_column].astype('category').cat.codes
-    elif 'state' in bdf_df.columns:
-        bdf_df['Step Index / 1'] = bdf_df['state'].astype('category').cat.codes
-
-    # Recommended: Step Count / 1 - increases each time Step Index / 1 changes
-    if 'Step Index / 1' in bdf_df.columns:
-        bdf_df['Step Count / 1'] = (bdf_df['Step Index / 1'] != bdf_df['Step Index / 1'].shift()).cumsum()
-
-    # Optional: Charging and Discharging Capacity / Ah (mAh -> Ah)
-    if 'Capacity' in bdf_df.columns and 'state' in bdf_df.columns:
-        bdf_df['Charging Capacity / Ah'] = 0.0
-        bdf_df['Discharging Capacity / Ah'] = 0.0
-        charge_mask = bdf_df['state'] == 0
-        discharge_mask = bdf_df['state'] == 1
-        bdf_df.loc[charge_mask, 'Charging Capacity / Ah'] = bdf_df.loc[charge_mask, 'Capacity'] / 1000
-        bdf_df.loc[discharge_mask, 'Discharging Capacity / Ah'] = bdf_df.loc[discharge_mask, 'Capacity'] / 1000
-
-    if bdf_only or save_csv or save_parquet:
-        bdf_cols = [c for c in bdf_df.columns if c in _BDF_CANONICAL_COLUMNS]
-        bdf_df = bdf_df[bdf_cols]
-
-    _downcast_bdf_columns(bdf_df)
+    bdf_df = build_bdf_df(df)
 
     if save_csv or save_parquet:
         stem = Path(filepath)
-        # Strip any existing .bdf.* extension so callers can pass either a bare stem or a full path
         while stem.suffix in ('.csv', '.parquet', '.gz', '.bdf'):
             stem = stem.with_suffix('')
-
-    if save_csv:
-        bdf_df.to_csv(stem.parent / (stem.name + '.bdf.csv'), index=False)
-
-    if save_parquet:
-        try:
-            import pyarrow  # noqa: F401
-        except ImportError:
-            raise ImportError(
-                'Writing .bdf.parquet files requires pyarrow. '
-                'Install it with: pip install navani[parquet]'
-            )
-        bdf_df.to_parquet(stem.parent / (stem.name + '.bdf.parquet'), index=False, compression=parquet_compression)
+        save_bdf(
+            bdf_df,
+            parquet_path=stem.parent / (stem.name + '.bdf.parquet') if save_parquet else None,
+            csv_path=stem.parent / (stem.name + '.bdf.csv') if save_csv else None,
+            parquet_compression=parquet_compression,
+        )
 
     # Legacy save=True/filepath support
     if save and filepath is not None:
         bdf_df.to_csv(filepath, index=False)
+
+    if not bdf_only and not save_csv and not save_parquet:
+        # Caller wants BDF columns added but navani columns preserved — merge back
+        result = df.copy()
+        for col in bdf_df.columns:
+            result[col] = bdf_df[col].values
+        _downcast_bdf_columns(result)
+        return result
 
     return bdf_df
