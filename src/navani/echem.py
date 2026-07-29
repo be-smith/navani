@@ -82,6 +82,12 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
             print("No timestamp detected in galvani export")
         df = biologic_processing(df)
 
+    elif filepath_lower.endswith('.mpt'):
+        # Biologic EC-Lab ASCII export of a .mpr file
+        from navani.biologic import mpt_reader
+        df = mpt_reader(filepath)
+        df = biologic_processing(df)
+
     # arbin .res file - uses an sql server and requires mdbtools installed
     # sudo apt get mdbtools for windows and mac
     elif filepath_lower.endswith('.res'):
