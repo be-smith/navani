@@ -2,7 +2,13 @@ import pandas as pd
 
 from navani.utils import _reset_capacity_per_half_cycle
 
-_EXPECTED_COLUMNS = {'Rec#', 'Cyc#', 'Step', 'Amp-hr', 'Amps', 'Volts', 'State'}
+_EXPECTED_COLUMNS = {'Rec#', 'Cyc#', 'Step', 'Volts', 'State'}
+
+# Maccor's export settings determine whether the capacity/current columns are
+# reported as Amp-hr/Amps or already scaled to mAh/mA, and the column is
+# renamed to say so in the latter case - there is no other reliable marker.
+_CAPACITY_COLUMNS = {'Amp-hr': 1000.0, 'Amp-hr(mAh)': 1.0, 'Capacity(mAh)': 1.0}
+_CURRENT_COLUMNS = {'Amps': 1000.0, 'Amps(mA)': 1.0, 'Current(mA)': 1.0}
 
 # Maccor's State column: 'C' = charge, 'D' = discharge, 'R' = rest.
 # 'S' marks the last point of a step (a schedule "sync" flag) and carries
@@ -28,12 +34,17 @@ def maccor_reader(df: pd.DataFrame) -> pd.DataFrame:
     if not _EXPECTED_COLUMNS.issubset(df.columns):
         raise ValueError('Columns do not match expected columns for a Maccor .txt file')
 
-    for col in ['Amp-hr', 'Amps', 'Volts']:
+    capacity_col = next((c for c in _CAPACITY_COLUMNS if c in df.columns), None)
+    current_col = next((c for c in _CURRENT_COLUMNS if c in df.columns), None)
+    if capacity_col is None or current_col is None:
+        raise ValueError('Columns do not match expected columns for a Maccor .txt file')
+
+    for col in [capacity_col, current_col, 'Volts']:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
     df['Voltage'] = df['Volts']
-    df['Current'] = df['Amps'] * 1000.0
-    df['Capacity'] = df['Amp-hr'] * 1000.0
+    df['Current'] = df[current_col] * _CURRENT_COLUMNS[current_col]
+    df['Capacity'] = df[capacity_col] * _CAPACITY_COLUMNS[capacity_col]
 
     if 'Test (Min)' in df.columns:
         df['Time'] = pd.to_numeric(df['Test (Min)'], errors='coerce') * 60.0

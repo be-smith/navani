@@ -203,6 +203,36 @@ def test_maccor_reader_rejects_wrong_columns():
         maccor_reader(df)
 
 
+def test_maccor_reader_already_milli_units():
+    """Some Maccor export settings report capacity/current already in mAh/mA,
+    with the column renamed to say so instead of the bare 'Amp-hr'/'Amps'."""
+    import pandas as pd
+    from navani.maccor import maccor_reader
+
+    base_df = pd.DataFrame({
+        "Rec#": [1, 2, 3],
+        "Cyc#": [0, 0, 0],
+        "Step": [1, 3, 3],
+        "Volts": [2.5, 2.6, 2.7],
+        "State": ["R", "C", "C"],
+    })
+
+    df_ah = base_df.copy()
+    df_ah["Amp-hr"] = [0.0, 0.001, 0.002]
+    df_ah["Amps"] = [0.0, 0.0005, 0.0005]
+    result_ah = maccor_reader(df_ah)
+
+    df_mah = base_df.copy()
+    df_mah["Amp-hr(mAh)"] = [0.0, 1.0, 2.0]
+    df_mah["Amps(mA)"] = [0.0, 0.5, 0.5]
+    result_mah = maccor_reader(df_mah)
+
+    assert result_ah["Capacity"].tolist() == result_mah["Capacity"].tolist()
+    assert result_ah["Current"].tolist() == result_mah["Current"].tolist()
+    assert result_mah["Capacity"].tolist() == [0.0, 0.0, 1.0]
+    assert result_mah["Current"].tolist() == [0.0, 0.5, 0.5]
+
+
 def test_arbin_res():
     import navani.echem as ec
 
