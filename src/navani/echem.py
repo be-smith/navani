@@ -103,12 +103,19 @@ def echem_file_loader(filepath: Union[str, Path], mass: float = None, area: floa
     # Currently .txt files are assumed to be from an ivium cycler - this may need to be changed
     # These have time, current and voltage columns only
     elif filepath_lower.endswith('.txt'):
-        df = pd.read_csv(os.path.join(filepath), sep='\t')
-        # Checking columns are an exact match
-        if set(['time /s', 'I /mA', 'E /V']) - set(df.columns) == set([]):
-            df = ivium_processing(df)
+        with open(filepath, 'r') as f:
+            first_line = f.readline()
+        if first_line.startswith("Today's Date"):
+            from navani.maccor import maccor_reader
+            df = pd.read_csv(os.path.join(filepath), sep='\t', skiprows=1)
+            df = maccor_reader(df)
         else:
-            raise ValueError('Columns do not match expected columns for an ivium .txt file')
+            df = pd.read_csv(os.path.join(filepath), sep='\t')
+            # Checking columns are an exact match
+            if set(['time /s', 'I /mA', 'E /V']) - set(df.columns) == set([]):
+                df = ivium_processing(df)
+            else:
+                raise ValueError('Columns do not match expected columns for an ivium .txt file')
 
     # Landdt and Arbin can output .xlsx and .xls files
     elif filepath_lower.endswith(('.xlsx', '.xls')):
