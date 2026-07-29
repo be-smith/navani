@@ -163,6 +163,46 @@ def test_mpr_reader():
     np.testing.assert_almost_equal(summary_df["Average Charge Voltage"].mean(), 2.97389223, decimal=5)
 
 
+def test_maccor_reader():
+    import navani.echem as ec
+    import numpy as np
+
+    test_path = pathlib.Path(__file__).parent.joinpath(
+        "../Example_data/maccor_example.txt"
+    )
+    df = ec.echem_file_loader(test_path)
+    assert df.shape == (37, 20)
+
+    required_cols = (
+        "state",
+        "cycle change",
+        "half cycle",
+        "full cycle",
+        "Capacity",
+        "Voltage",
+        "Current",
+        "Time",
+    )
+    assert set(required_cols) <= set(df)
+
+    # 'R' for rest, plain ints for charge (1) / discharge (0)
+    assert set(df["state"].unique()) == {"R", 1, 0}
+    assert df["half cycle"].min() == 0
+    assert df["half cycle"].max() == 4
+
+    # Capacity resets at the start of each half cycle
+    assert np.isclose(df.groupby("half cycle")["Capacity"].first().abs().max(), 0.0, atol=1e-6)
+
+
+def test_maccor_reader_rejects_wrong_columns():
+    import pandas as pd
+    from navani.maccor import maccor_reader
+
+    df = pd.DataFrame({"foo": [1, 2, 3], "bar": [4, 5, 6]})
+    with pytest.raises(ValueError):
+        maccor_reader(df)
+
+
 def test_arbin_res():
     import navani.echem as ec
 
