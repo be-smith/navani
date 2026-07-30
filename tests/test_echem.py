@@ -384,6 +384,7 @@ ALL_EXAMPLE_FILES = [
     "test.nda",
     "test.ndax",
     "example_output.csv",
+    "maccor_example.txt",
 ]
 
 
@@ -448,6 +449,12 @@ def test_build_bdf_df_round_trip(filename):
     )
     assert len(df_reconstructed) == len(df_original)
 
+    # half cycle boundaries must be unchanged by the round trip - otherwise cycle-by-cycle
+    # plotting (e.g. colouring by half/full cycle) shifts on reload from a cached BDF file.
+    np.testing.assert_array_equal(
+        df_original['half cycle'].values, df_reconstructed['half cycle'].values
+    )
+
 
 @pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
 def test_save_bdf_csv_round_trip(filename, tmp_path):
@@ -470,6 +477,9 @@ def test_save_bdf_csv_round_trip(filename, tmp_path):
     )
     np.testing.assert_array_almost_equal(
         df_original['Current'].values, df_reimported['Current'].values, decimal=3,
+    )
+    np.testing.assert_array_equal(
+        df_original['half cycle'].values, df_reimported['half cycle'].values
     )
 
 
@@ -500,6 +510,7 @@ def test_save_bdf_parquet(filename, tmp_path):
         df['Voltage'].values, df_loaded['Voltage'].values, decimal=4
     )
     assert len(df_loaded) == len(df)
+    np.testing.assert_array_equal(df['half cycle'].values, df_loaded['half cycle'].values)
 
 
 @pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
