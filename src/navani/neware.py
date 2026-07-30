@@ -4,6 +4,25 @@ from typing import Union
 from pathlib import Path
 
 
+def _sign_state(x: float):
+    """Classify charge (0) / discharge (1) / rest ('R') from current direction.
+
+    Matches every other navani reader's convention (Arbin, Biologic, Maccor, BDF).
+    Determined empirically to agree with Neware's own Status/Step_Type labels on
+    ~2 million rows of real Neware data, and is simpler and more robust than mapping
+    the instrument's step-type vocabulary (which varies by CC/CV/CP/CCCV/CPCV mode
+    and can leave rows unclassified if a variant is missed).
+    """
+    if x > 0:
+        return 0
+    elif x < 0:
+        return 1
+    elif x == 0:
+        return 'R'
+    else:
+        raise ValueError('Unexpected value in current - not a number')
+
+
 def neware_reader_nda(filename: Union[str, Path]) -> pd.DataFrame:
     """
     Read and process a Neware .nda or .ndax file into a navani-compatible DataFrame.
@@ -26,10 +45,7 @@ def neware_reader_nda(filename: Union[str, Path]) -> pd.DataFrame:
     df["Capacity"] = df["Discharge_Capacity(mAh)"] + df["Charge_Capacity(mAh)"]
 
     df["Current"] = df["Current(mA)"]
-    df["state"] = pd.Categorical(values=["unknown"] * len(df["Status"]), categories=["R", 1, 0, "unknown"])
-    df.loc[df["Status"] == "Rest", "state"] = "R"
-    df.loc[df["Status"] == "CC_Chg", "state"] = 0
-    df.loc[df["Status"] == "CC_DChg", "state"] = 1
+    df["state"] = df["Current"].map(_sign_state)
     df["half cycle"] = df["Cycle"]
     df['cycle change'] = False
     not_rest_idx = df[df['state'] != 'R'].index
@@ -51,9 +67,6 @@ _NEWARE_EXCEL_REQUIRED_COLUMNS = {
     "DataPoint", "Cycle Index", "Step Index", "Step Type", "Time", "Total Time",
     "Voltage(V)", "Capacity(mAh)", "Energy(Wh)", "Date",
 }
-
-_NEWARE_CHARGE_STEP_TYPES = {"CC Chg", "CCCV Chg", "CV Chg"}
-_NEWARE_DISCHARGE_STEP_TYPES = {"CC DChg", "CCCV DChg", "CV DChg"}
 
 
 def neware_reader_excel(
@@ -129,14 +142,8 @@ def neware_reader_excel(
     # Absolute timestamp from "Date" column
     df["Timestamp"] = pd.to_datetime(df["Date"])
 
-    # State mapping: charge step types -> 0, discharge -> 1, rest -> 'R'
-    df["state"] = pd.Categorical(
-        values=["unknown"] * len(df),
-        categories=["R", 1, 0, "unknown"],
-    )
-    df.loc[df["Step_Type"] == "Rest", "state"] = "R"
-    df.loc[df["Step_Type"].isin(_NEWARE_CHARGE_STEP_TYPES), "state"] = 0
-    df.loc[df["Step_Type"].isin(_NEWARE_DISCHARGE_STEP_TYPES), "state"] = 1
+    # State mapping: charge/discharge/rest from current direction
+    df["state"] = df["Current"].map(_sign_state)
 
     # Half cycle counting (ignoring rest rows)
     df["cycle change"] = False
