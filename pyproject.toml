@@ -43,7 +43,13 @@ dev = [
     "pytest",
     "pytest-dotenv",
 ]
+bdf-validation = [
+    "batterydf >= 0.1.0",
+]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+markers = [
+    "local_data: tests that require private files in Example_data/local/ (gitignored, skipped if absent)",
+]
