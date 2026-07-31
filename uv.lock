@@ -866,7 +866,7 @@ requires-dist = [
 provides-extras = ["parquet"]
 
 [package.metadata.requires-dev]
-bdf-validation = [{ name = "batterydf" }]
+bdf-validation = [{ name = "batterydf", specifier = ">=0.1.0" }]
 dev = [
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "pytest" },
