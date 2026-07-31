@@ -14,7 +14,8 @@ _CURRENT_COLUMNS = {'Amps': 1000.0, 'Amps(mA)': 1.0, 'Current(mA)': 1.0}
 # 'S' marks the last point of a step (a schedule "sync" flag) and carries
 # the same electrochemical meaning as the row before it, so it maps to the
 # same state rather than being forced to rest.
-_STATE_MAP = {'C': 1, 'D': 0}
+# navani's state convention (see echem.py): 0 = charge (positive current), 1 = discharge (negative current).
+_STATE_MAP = {'C': 0, 'D': 1}
 
 
 def maccor_reader(df: pd.DataFrame) -> pd.DataFrame:
@@ -43,11 +44,7 @@ def maccor_reader(df: pd.DataFrame) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
     df['Voltage'] = df['Volts']
-    df['Current'] = df[current_col] * _CURRENT_COLUMNS[current_col]
     df['Capacity'] = df[capacity_col] * _CAPACITY_COLUMNS[capacity_col]
-
-    if 'Test (Min)' in df.columns:
-        df['Time'] = pd.to_numeric(df['Test (Min)'], errors='coerce') * 60.0
 
     # Maccor's own State column ('C'/'D'/'R'/'S') is the authoritative signal for
     # charge/discharge/rest - unlike the Step number, which is procedure-specific
@@ -58,6 +55,16 @@ def maccor_reader(df: pd.DataFrame) -> pd.DataFrame:
     numeric_state = numeric_state.ffill()
     df['state'] = numeric_state.astype('Int64').astype(object)
     df.loc[state_str == 'R', 'state'] = 'R'
+
+    # Maccor's Amps column is unsigned (magnitude only; direction comes from State),
+    # unlike every other cycler format navani supports, where negative current means
+    # discharge. Sign it here so downstream consumers (e.g. a BDF round-trip, which
+    # infers state from the sign of Current alone) see a consistent convention.
+    df['Current'] = df[current_col].abs() * _CURRENT_COLUMNS[current_col]
+    df.loc[df['state'] == 1, 'Current'] *= -1
+
+    if 'Test (Min)' in df.columns:
+        df['Time'] = pd.to_numeric(df['Test (Min)'], errors='coerce') * 60.0
 
     not_rest_idx = df[df['state'] != 'R'].index
     df['cycle change'] = False

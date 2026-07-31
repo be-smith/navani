@@ -407,8 +407,15 @@ def biologic_processing(df: pd.DataFrame) -> pd.DataFrame:
     if "time/s" in df.columns:
         df["Time"] = df["time/s"]
 
+    # I/mA is Biologic's instantaneous, correctly-signed current reading - prefer it
+    # directly over differentiating a capacity column, which is noisier and undefined
+    # for the first row (nothing to diff against, so it silently defaults to rest).
+    if ('I/mA' in df.columns) and ('Ewe/V' in df.columns):
+        df['Current'] = df['I/mA']
+        df['state'] = df['Current'].map(lambda x: bio_state(x))
+
     # Adding current column that galvani can't (sometimes) export for some reason
-    if ('time/s' in df.columns) and ('dQ/mA.h' in df.columns or 'dq/mA.h' in df.columns):
+    elif ('time/s' in df.columns) and ('dQ/mA.h' in df.columns or 'dq/mA.h' in df.columns):
         df['dt'] = np.diff(df['time/s'], prepend=0)
         if 'dQ/mA.h' not in df.columns:
             df.rename(columns = {'dq/mA.h': 'dQ/mA.h'}, inplace = True)
@@ -429,12 +436,9 @@ def biologic_processing(df: pd.DataFrame) -> pd.DataFrame:
 
         df['state'] = df['Current'].map(lambda x: bio_state(x))
 
-    # If current has been correctly exported then we can use that
-    elif('I/mA' in df.columns) and ('Q charge/discharge/mA.h' not in df.columns) and ('dQ/mA.h' not in df.columns) and ('Ewe/V' in df.columns):
-        df['Current'] = df['I/mA']
-        df['dV'] = np.diff(df['Ewe/V'], prepend=df['Ewe/V'][0])
-        df['state'] = df['dV'].map(lambda x: bio_state(x))
-
+    # <I>/mA is an averaged current that (unlike I/mA) is not reliably signed - e.g.
+    # it's magnitude-only on real CV exports - so state is derived from the direction
+    # of the voltage sweep instead of the sign of <I>/mA itself.
     elif('<I>/mA' in df.columns) and ('Q charge/discharge/mA.h' not in df.columns) and ('dQ/mA.h' not in df.columns) and ('Ewe/V' in df.columns):
         df['Current'] = df['<I>/mA']
         df['dV'] = np.diff(df['Ewe/V'], prepend=df['Ewe/V'][0])

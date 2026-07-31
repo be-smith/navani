@@ -185,13 +185,18 @@ def test_maccor_reader():
     )
     assert set(required_cols) <= set(df)
 
-    # 'R' for rest, plain ints for charge (1) / discharge (0)
+    # 'R' for rest, plain ints for charge (0) / discharge (1)
     assert set(df["state"].unique()) == {"R", 1, 0}
     assert df["half cycle"].min() == 0
     assert df["half cycle"].max() == 4
 
     # Capacity resets at the start of each half cycle
     assert np.isclose(df.groupby("half cycle")["Capacity"].first().abs().max(), 0.0, atol=1e-6)
+
+    # Maccor's Amps column is unsigned; navani should sign Current by state
+    # (positive = charge, negative = discharge) to match every other cycler format.
+    assert (df.loc[df["state"] == 0, "Current"] > 0).all()
+    assert (df.loc[df["state"] == 1, "Current"] < 0).all()
 
 
 def test_maccor_reader_rejects_wrong_columns():
@@ -379,6 +384,7 @@ ALL_EXAMPLE_FILES = [
     "test.nda",
     "test.ndax",
     "example_output.csv",
+    "maccor_example.txt",
 ]
 
 
@@ -443,6 +449,12 @@ def test_build_bdf_df_round_trip(filename):
     )
     assert len(df_reconstructed) == len(df_original)
 
+    # half cycle boundaries must be unchanged by the round trip - otherwise cycle-by-cycle
+    # plotting (e.g. colouring by half/full cycle) shifts on reload from a cached BDF file.
+    np.testing.assert_array_equal(
+        df_original['half cycle'].values, df_reconstructed['half cycle'].values
+    )
+
 
 @pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
 def test_save_bdf_csv_round_trip(filename, tmp_path):
@@ -465,6 +477,9 @@ def test_save_bdf_csv_round_trip(filename, tmp_path):
     )
     np.testing.assert_array_almost_equal(
         df_original['Current'].values, df_reimported['Current'].values, decimal=3,
+    )
+    np.testing.assert_array_equal(
+        df_original['half cycle'].values, df_reimported['half cycle'].values
     )
 
 
@@ -495,6 +510,7 @@ def test_save_bdf_parquet(filename, tmp_path):
         df['Voltage'].values, df_loaded['Voltage'].values, decimal=4
     )
     assert len(df_loaded) == len(df)
+    np.testing.assert_array_equal(df['half cycle'].values, df_loaded['half cycle'].values)
 
 
 @pytest.mark.parametrize("filename", ALL_EXAMPLE_FILES)
