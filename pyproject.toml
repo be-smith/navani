@@ -43,6 +43,9 @@ dev = [
     "pytest",
     "pytest-dotenv",
 ]
+bdf-validation = [
+    "batterydf",
+]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

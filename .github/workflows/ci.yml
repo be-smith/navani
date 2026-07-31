@@ -37,7 +37,7 @@ jobs:
 
       - name: Install latest compatible versions of immediate dependencies
         run: |
-          uv sync --locked --all-extras --dev
+          uv sync --locked --all-extras --dev --group bdf-validation
 
       - name: Run all tests
         run: |
