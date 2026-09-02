@@ -58,7 +58,13 @@ def neware_reader_nda(filename: Union[str, Path]) -> pd.DataFrame:
         # Time stamp only records to the precision of a second, so we add the fractional seconds from the "Time" column to get a more accurate time column.
         # Initial Neware "Time" column is renamed to "Step Time / s" to reflect that it is the time within the current step, not the total time.
         df.rename(columns={"Time": "Step Time / s"}, inplace=True)
-        step_start_seconds = (df.groupby("Step_Index")["Timestamp"].transform("first") - df["Timestamp"].iloc[0]).dt.total_seconds()
+        # Step_Index repeats across cycles (e.g. 1, 2, 3, 1, 2, 3, ...), so grouping
+        # directly on its value would anchor every repeat of a step to the *first*
+        # occurrence of that step index in the whole file. Group on contiguous step
+        # blocks instead (a new block starts whenever Step_Index changes) so each
+        # repeat of a step gets its own start time.
+        step_block = df["Step_Index"].ne(df["Step_Index"].shift()).cumsum()
+        step_start_seconds = (df.groupby(step_block)["Timestamp"].transform("first") - df["Timestamp"].iloc[0]).dt.total_seconds()
         df["Time"] = step_start_seconds + df["Step Time / s"]
     return df
 
