@@ -300,6 +300,47 @@ def test_ndax():
     np.testing.assert_almost_equal(df["Voltage"].max(), 4.3998, decimal=4)
     assert df.shape[0] == 1464
 
+
+def test_nda_time_column_across_repeated_steps(monkeypatch):
+    """Time must keep increasing when a Step_Index value repeats in a later cycle.
+
+    Regression test: grouping the step-start timestamp lookup by raw Step_Index
+    value (rather than by contiguous step block) anchored every repeat of a step
+    to its *first* occurrence in the file, causing Time to reset/jump backwards
+    on the second and subsequent cycles.
+    """
+    import pandas as pd
+    import navani.neware as neware
+
+    base = pd.Timestamp("2024-01-01 00:00:00")
+    rows = []
+    t = 0
+    for _cycle in range(3):
+        for step in [1, 2, 3]:
+            for step_time in [0, 1, 2]:
+                rows.append(
+                    {
+                        "Index": len(rows) + 1,
+                        "Step_Index": step,
+                        "Cycle": step,
+                        "Timestamp": base + pd.Timedelta(seconds=t),
+                        "Time": float(step_time),
+                        "Current(mA)": 1.0 if step != 2 else -1.0,
+                        "Charge_Capacity(mAh)": 0.0,
+                        "Discharge_Capacity(mAh)": 0.0,
+                    }
+                )
+                t += 1
+    fake_df = pd.DataFrame(rows)
+
+    monkeypatch.setattr("NewareNDA.NewareNDA.read", lambda filename: fake_df)
+
+    df = neware.neware_reader_nda("fake_path.nda")
+
+    assert df["Time"].is_monotonic_increasing
+    assert df["Time"].tolist() == list(range(len(rows)))
+
+
 @pytest.mark.parametrize("test_path", [
     "00_test_01_OCV_C01.mpr",
     "00_test_02_MB_C01.mpr",
